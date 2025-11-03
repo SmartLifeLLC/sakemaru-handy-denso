@@ -14,6 +14,7 @@ import biz.smt_life.android.feature.outbound.OutboundEntryScreen
 import biz.smt_life.android.feature.outbound.OutboundSelectScreen
 import biz.smt_life.android.feature.outbound.PickingListScreen
 import biz.smt_life.android.feature.outbound.history.OutboundHistoryScreen
+import biz.smt_life.android.feature.settings.SettingsScreen
 
 @Composable
 fun HandyNavHost(
@@ -32,6 +33,17 @@ fun HandyNavHost(
                     navController.navigate(Routes.Main.route) {
                         popUpTo(Routes.Login.route) { inclusive = true }
                     }
+                },
+                onNavigateToSettings = {
+                    navController.navigate(Routes.Settings.route)
+                }
+            )
+        }
+
+        composable(Routes.Settings.route) {
+            SettingsScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }
@@ -58,7 +70,7 @@ fun HandyNavHost(
                 },
                 onLogout = {
                     navController.navigate(Routes.Login.route) {
-                        popUpTo(Routes.Main.route) { inclusive = true }
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )

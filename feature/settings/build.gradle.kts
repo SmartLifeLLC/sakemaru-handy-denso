@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "biz.smt_life.android.feature.login"
+    namespace = "biz.smt_life.android.feature.settings"
     compileSdk = 36
 
     defaultConfig {

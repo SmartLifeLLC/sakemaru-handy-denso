@@ -7,6 +7,8 @@ sealed interface MainUiState {
     data object Loading : MainUiState
 
     data class Ready(
+        val pickerCode: String?,
+        val pickerName: String?,
         val warehouse: Warehouse,
         val pendingCounts: PendingCounts,
         val currentDate: String,

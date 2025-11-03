@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
     alias(libs.plugins.android.library)
@@ -15,6 +17,19 @@ android {
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Read API key from local.properties
+        val properties = Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            FileInputStream(localPropertiesFile).use { properties.load(it) }
+        }
+        val apiKey = properties.getProperty("WMS_API_KEY") ?: ""
+        buildConfigField("String", "WMS_API_KEY", "\"$apiKey\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {
@@ -31,6 +46,7 @@ android {
 
 dependencies {
     implementation(project(":core:domain"))
+    implementation(project(":core:ui"))
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)

@@ -13,6 +13,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * ViewModel for Login screen per Spec 2.1.0.
+ * Handles authentication with staff code and password.
+ */
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
@@ -42,7 +46,14 @@ class LoginViewModel @Inject constructor(
 
             authRepository.login(currentState.staffCode, currentState.password)
                 .onSuccess { authResult ->
-                    tokenManager.saveToken(authResult.token)
+                    // Save all auth data including picker info
+                    tokenManager.saveAuth(
+                        token = authResult.token,
+                        pickerId = authResult.pickerId,
+                        pickerCode = authResult.pickerCode,
+                        pickerName = authResult.pickerName,
+                        defaultWarehouseId = authResult.defaultWarehouseId
+                    )
                     _state.update { it.copy(isLoading = false, isSuccess = true) }
                 }
                 .onFailure { error ->
@@ -50,6 +61,7 @@ class LoginViewModel @Inject constructor(
                         is NetworkException.Unauthorized -> "Invalid credentials"
                         is NetworkException.NetworkError -> "Network connection failed"
                         is NetworkException.ServerError -> "Server error. Please try again."
+                        is NetworkException.ValidationError -> error.msg
                         else -> error.message ?: "Unknown error"
                     }
                     _state.update { it.copy(isLoading = false, errorMessage = message) }

@@ -3,6 +3,7 @@ package biz.smt_life.android.sakemaru_handy_denso.navigation
 sealed class Routes(val route: String) {
     object Login : Routes("login")
     object Main : Routes("main")
+    object Settings : Routes("settings")
     object WarehouseSettings : Routes("warehouse_settings")
     object Inbound : Routes("inbound")
 

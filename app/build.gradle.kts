@@ -65,6 +65,7 @@ dependencies {
     implementation(project(":feature:inbound"))
     implementation(project(":feature:outbound"))
     implementation(project(":feature:main"))
+    implementation(project(":feature:settings"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

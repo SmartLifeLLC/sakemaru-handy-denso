@@ -30,6 +30,13 @@ fun MainRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Listen for logout event
+    LaunchedEffect(Unit) {
+        viewModel.logoutEvent.collect {
+            onLogout()
+        }
+    }
+
     MainScreen(
         state = state,
         onNavigateToWarehouseSettings = onNavigateToWarehouseSettings,
@@ -38,7 +45,7 @@ fun MainRoute(
         onNavigateToMove = onNavigateToMove,
         onNavigateToInventory = onNavigateToInventory,
         onNavigateToLocationSearch = onNavigateToLocationSearch,
-        onLogout = onLogout,
+        onLogoutClick = viewModel::logout,
         onRetry = viewModel::retry
     )
 }
@@ -52,7 +59,7 @@ fun MainScreen(
     onNavigateToMove: () -> Unit,
     onNavigateToInventory: () -> Unit,
     onNavigateToLocationSearch: () -> Unit,
-    onLogout: () -> Unit,
+    onLogoutClick: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -63,6 +70,8 @@ fun MainScreen(
 
         is MainUiState.Ready -> {
             ReadyContent(
+                pickerCode = state.pickerCode,
+                pickerName = state.pickerName,
                 warehouse = state.warehouse,
                 pendingCounts = state.pendingCounts,
                 currentDate = state.currentDate,
@@ -74,7 +83,7 @@ fun MainScreen(
                 onNavigateToMove = onNavigateToMove,
                 onNavigateToInventory = onNavigateToInventory,
                 onNavigateToLocationSearch = onNavigateToLocationSearch,
-                onLogout = onLogout,
+                onLogoutClick = onLogoutClick,
                 modifier = modifier
             )
         }
@@ -101,6 +110,8 @@ private fun LoadingContent(modifier: Modifier = Modifier) {
 
 @Composable
 private fun ReadyContent(
+    pickerCode: String?,
+    pickerName: String?,
     warehouse: Warehouse,
     pendingCounts: PendingCounts,
     currentDate: String,
@@ -112,30 +123,69 @@ private fun ReadyContent(
     onNavigateToMove: () -> Unit,
     onNavigateToInventory: () -> Unit,
     onNavigateToLocationSearch: () -> Unit,
-    onLogout: () -> Unit,
+    onLogoutClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
+    // Logout confirmation dialog
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Logout") },
+            text = { Text("Are you sure you want to logout?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        onLogoutClick()
+                    }
+                ) {
+                    Text("Logout")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // Warehouse section with settings icon
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = warehouse.name,
-                style = MaterialTheme.typography.headlineSmall
-            )
-            IconButton(onClick = onNavigateToWarehouseSettings) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "倉庫設定"
+        // Header with picker info and warehouse
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Picker info
+            if (pickerCode != null && pickerName != null) {
+                Text(
+                    text = "Worker: $pickerCode $pickerName",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
+            }
+
+            // Warehouse section with settings icon
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = warehouse.name,
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                IconButton(onClick = onNavigateToWarehouseSettings) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "倉庫設定"
+                    )
+                }
             }
         }
 
@@ -220,7 +270,7 @@ private fun ReadyContent(
                     )
                 }
 
-                IconButton(onClick = onLogout) {
+                IconButton(onClick = { showLogoutDialog = true }) {
                     Icon(
                         imageVector = Icons.Default.ExitToApp,
                         contentDescription = "ログアウト"
@@ -276,7 +326,7 @@ private fun MainScreenLoadingPreview() {
             onNavigateToMove = {},
             onNavigateToInventory = {},
             onNavigateToLocationSearch = {},
-            onLogout = {},
+            onLogoutClick = {},
             onRetry = {}
         )
     }
@@ -288,6 +338,8 @@ private fun MainScreenReadyPreview() {
     HandyTheme {
         MainScreen(
             state = MainUiState.Ready(
+                pickerCode = "worker01",
+                pickerName = "Warehouse Worker",
                 warehouse = Warehouse("001", "東京倉庫"),
                 pendingCounts = PendingCounts(5, 12, 3),
                 currentDate = "2024/10/07 Mon",
@@ -300,7 +352,7 @@ private fun MainScreenReadyPreview() {
             onNavigateToMove = {},
             onNavigateToInventory = {},
             onNavigateToLocationSearch = {},
-            onLogout = {},
+            onLogoutClick = {},
             onRetry = {}
         )
     }
@@ -318,7 +370,7 @@ private fun MainScreenErrorPreview() {
             onNavigateToMove = {},
             onNavigateToInventory = {},
             onNavigateToLocationSearch = {},
-            onLogout = {},
+            onLogoutClick = {},
             onRetry = {}
         )
     }

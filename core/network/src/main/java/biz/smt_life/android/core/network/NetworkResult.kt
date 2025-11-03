@@ -11,6 +11,7 @@ sealed class NetworkException(message: String) : Exception(message) {
     data class NotFound(val msg: String = "Not found") : NetworkException(msg)
     data class Conflict(val msg: String = "Conflict") : NetworkException(msg)
     data class Validation(val errors: Map<String, String>) : NetworkException("Validation failed")
+    data class ValidationError(val msg: String = "Validation error") : NetworkException(msg)
     data class ServerError(val msg: String = "Server error") : NetworkException(msg)
     data class NetworkError(val msg: String = "Network error") : NetworkException(msg)
     data class Unknown(val msg: String = "Unknown error") : NetworkException(msg)

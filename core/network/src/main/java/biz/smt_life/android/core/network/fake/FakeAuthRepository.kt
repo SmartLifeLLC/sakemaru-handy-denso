@@ -25,18 +25,19 @@ class FakeAuthRepository @Inject constructor(
         return if (staffCode == VALID_CODE && password == VALID_PASSWORD) {
             val authResult = AuthResult(
                 token = "fake-jwt-token-${System.currentTimeMillis()}",
-                staffId = "S001",
-                staffName = "Warehouse Worker",
-                role = "operator"
+                pickerId = 1,
+                pickerCode = staffCode,
+                pickerName = "Warehouse Worker",
+                defaultWarehouseId = 991
             )
 
             // Set current user in profile repository
             profileRepository.setCurrentUser(
                 User(
-                    id = authResult.staffId,
-                    name = authResult.staffName,
+                    id = authResult.pickerId.toString(),
+                    name = authResult.pickerName,
                     staffCode = staffCode,
-                    role = authResult.role
+                    role = "operator"
                 )
             )
 
@@ -44,5 +45,24 @@ class FakeAuthRepository @Inject constructor(
         } else {
             Result.failure(NetworkException.Unauthorized("Invalid credentials"))
         }
+    }
+
+    override suspend fun logout(): Result<Unit> {
+        delay(LATENCY_MS)
+        return Result.success(Unit)
+    }
+
+    override suspend fun validateSession(): Result<AuthResult> {
+        delay(LATENCY_MS)
+        // Fake validation - always succeeds if called
+        return Result.success(
+            AuthResult(
+                token = "",
+                pickerId = 1,
+                pickerCode = "worker01",
+                pickerName = "Warehouse Worker",
+                defaultWarehouseId = 991
+            )
+        )
     }
 }

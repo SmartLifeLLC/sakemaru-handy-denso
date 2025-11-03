@@ -4,4 +4,6 @@ import biz.smt_life.android.core.domain.model.AuthResult
 
 interface AuthRepository {
     suspend fun login(staffCode: String, password: String): Result<AuthResult>
+    suspend fun logout(): Result<Unit>
+    suspend fun validateSession(): Result<AuthResult>
 }
