@@ -36,7 +36,8 @@ fun HandyNavHost(
                 },
                 onNavigateToSettings = {
                     navController.navigate(Routes.Settings.route)
-                }
+                },
+                appVersion = biz.smt_life.android.sakemaru_handy_denso.BuildConfig.VERSION_NAME
             )
         }
 

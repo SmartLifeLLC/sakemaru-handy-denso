@@ -31,6 +31,7 @@ import java.util.Locale
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
+    appVersion: String = "1.0",
     viewModel: LoginViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -162,8 +163,7 @@ fun LoginScreen(
                 modifier = Modifier.padding(bottom = 16.dp)
             ) {
                 Text(
-//                    text = "Version ${biz.smt_life.android.sakemaru_handy_denso.BuildConfig.VERSION_NAME}",
-                    text = "version",
+                    text = "Version $appVersion",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
