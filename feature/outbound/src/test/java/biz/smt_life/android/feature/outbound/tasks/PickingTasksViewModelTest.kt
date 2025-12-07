@@ -1,6 +1,7 @@
 package biz.smt_life.android.feature.outbound.tasks
 
 import app.cash.turbine.test
+import biz.smt_life.android.core.domain.model.ItemStatus
 import biz.smt_life.android.core.domain.model.PickingTask
 import biz.smt_life.android.core.domain.model.PickingTaskItem
 import biz.smt_life.android.core.domain.model.QuantityType
@@ -194,7 +195,15 @@ class PickingTasksViewModelTest {
                 plannedQtyType = QuantityType.CASE,
                 plannedQty = 2.0,
                 pickedQty = if (index < completedItems) 2.0 else 0.0,
-                slipNumber = 100
+                slipNumber = 100,
+                janCode = "1234567",
+                volume = "volume",
+                capacityCase = 10,
+                packaging = "package",
+                temperatureType = "temp",
+                images = listOf("image1", "image2"),
+                status = ItemStatus.COMPLETED,
+                walkingOrder = 1
             )
         }
 
@@ -206,9 +215,9 @@ class PickingTasksViewModelTest {
             pickingAreaName = "Area B",
             pickingAreaCode = "B",
             items = items,
-            totalItems = totalItems,
-            completedItems = completedItems,
-            progressText = "$completedItems/$totalItems"
+//            totalItems = totalItems,
+//            completedItems = completedItems,
+//            progressText = "$completedItems/$totalItems"
         )
     }
 
