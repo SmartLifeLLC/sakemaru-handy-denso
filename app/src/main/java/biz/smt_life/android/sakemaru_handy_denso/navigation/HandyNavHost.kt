@@ -1,7 +1,19 @@
 package biz.smt_life.android.sakemaru_handy_denso.navigation
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -12,6 +24,9 @@ import biz.smt_life.android.feature.login.LoginScreen
 import biz.smt_life.android.feature.main.MainRoute
 import biz.smt_life.android.feature.outbound.OutboundEntryScreen
 import biz.smt_life.android.feature.outbound.tasks.PickingTasksScreen
+import biz.smt_life.android.feature.outbound.tasks.PickingTasksViewModel
+import biz.smt_life.android.feature.outbound.picking.OutboundPickingScreen
+import biz.smt_life.android.feature.outbound.picking.PickingHistoryScreen
 import biz.smt_life.android.feature.outbound.history.OutboundHistoryScreen
 import biz.smt_life.android.feature.settings.SettingsScreen
 
@@ -85,18 +100,129 @@ fun HandyNavHost(
         }
 
         // Outbound routes (2.5.1 - 2.5.4 spec flow)
-        composable(Routes.PickingList.route) {
+        composable(Routes.PickingList.route) { backStackEntry ->
+            // Scoped ViewModel for PickingTasks and OutboundPicking screens
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Routes.PickingList.route)
+            }
+            val pickingTasksViewModel: PickingTasksViewModel = hiltViewModel(parentEntry)
+
             PickingTasksScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onNavigateToPickingDetail = { courseCode ->
-                    // Navigate to OutboundEntry using courseCode
-                    navController.navigate(Routes.OutboundEntry.createRoute(courseCode))
+                onNavigateToDataInput = { taskId ->
+                    // Navigate to OutboundPicking (Data Input) screen
+                    navController.navigate(Routes.OutboundPicking.createRoute(taskId))
+                },
+                onNavigateToHistory = { taskId ->
+                    // Navigate to PickingHistory screen
+                    navController.navigate(Routes.PickingHistory.createRoute(taskId))
+                },
+                viewModel = pickingTasksViewModel
+            )
+        }
+
+        composable(
+            route = Routes.OutboundPicking.route,
+            arguments = listOf(
+                navArgument("taskId") {
+                    type = NavType.IntType
+                }
+            )
+        ) { backStackEntry ->
+            val taskId = backStackEntry.arguments?.getInt("taskId") ?: return@composable
+
+            // Get the shared ViewModel from the parent navigation entry
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Routes.PickingList.route)
+            }
+            val pickingTasksViewModel: PickingTasksViewModel = hiltViewModel(parentEntry)
+            val state by pickingTasksViewModel.state.collectAsStateWithLifecycle()
+
+            // Retrieve the selected task from the shared ViewModel
+            val task = state.selectedTask
+
+            if (task == null || task.taskId != taskId) {
+                // Task not found or mismatch - show error and navigate back
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text("タスクが見つかりません")
+                        Button(onClick = { navController.popBackStack() }) {
+                            Text("戻る")
+                        }
+                    }
+                }
+            } else {
+                OutboundPickingScreen(
+                    task = task,
+                    onNavigateBack = {
+                        pickingTasksViewModel.clearSelectedTask()
+                        navController.popBackStack()
+                    },
+                    onNavigateToCourseList = {
+                        pickingTasksViewModel.clearSelectedTask()
+                        navController.popBackStack()
+                    },
+                    onNavigateToHistory = {
+                        // Navigate to PickingHistory screen (2.5.3)
+                        navController.navigate(Routes.PickingHistory.createRoute(taskId))
+                    },
+                    onNavigateToMain = {
+                        pickingTasksViewModel.clearSelectedTask()
+                        navController.navigate(Routes.Main.route) {
+                            popUpTo(Routes.PickingList.route) { inclusive = true }
+                        }
+                    },
+                    onTaskCompleted = {
+                        // Task completed successfully - navigate back to course list and refresh
+                        pickingTasksViewModel.clearSelectedTask()
+                        pickingTasksViewModel.refresh()
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
+
+        // Picking History screen (2.5.3 - 出庫処理＞履歴)
+        composable(
+            route = Routes.PickingHistory.route,
+            arguments = listOf(
+                navArgument("taskId") {
+                    type = NavType.IntType
+                }
+            )
+        ) { backStackEntry ->
+            val taskId = backStackEntry.arguments?.getInt("taskId") ?: return@composable
+
+            // Get the shared ViewModel from the parent navigation entry
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Routes.PickingList.route)
+            }
+            val pickingTasksViewModel: PickingTasksViewModel = hiltViewModel(parentEntry)
+
+            // Pass taskId directly - PickingHistoryViewModel will observe repository flow
+            PickingHistoryScreen(
+                taskId = taskId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onHistoryConfirmed = {
+                    // All items confirmed - navigate back to course list and refresh
+                    pickingTasksViewModel.clearSelectedTask()
+                    pickingTasksViewModel.refresh()
+                    navController.popBackStack()
                 }
             )
         }
 
+        // Legacy outbound entry (to be deprecated)
         composable(
             route = Routes.OutboundEntry.route
         ) { backStackEntry ->

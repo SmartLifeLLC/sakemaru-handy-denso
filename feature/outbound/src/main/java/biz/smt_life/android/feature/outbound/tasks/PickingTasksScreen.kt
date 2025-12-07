@@ -27,7 +27,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import biz.smt_life.android.core.domain.model.PickingTask
+import kotlinx.coroutines.launch
 
 /**
  * Picking Tasks screen per spec 2.5.1 出庫処理 > ピッキングリスト選択.
@@ -44,18 +49,29 @@ import biz.smt_life.android.core.domain.model.PickingTask
  * - Two tabs: My Area (担当エリア) and All Courses (全コース)
  * - List of tasks with progress (e.g., "5/10")
  * - Status chip based on completion
+ * - Status-based navigation:
+ *   - PENDING items → Data Input screen
+ *   - Only PICKING items → History screen (editable)
+ *   - All COMPLETED/SHORTAGE → History screen (read-only)
  * - Pull-to-refresh for each tab
  * - Empty and error states
- * - Tap to navigate to picking detail
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PickingTasksScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToPickingDetail: (courseCode: String) -> Unit,
+    onNavigateToDataInput: (taskId: Int) -> Unit,
+    onNavigateToHistory: (taskId: Int) -> Unit,
     viewModel: PickingTasksViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    var isStartingTask by remember { mutableStateOf(false) }
+
+    // Show error messages
+    LaunchedEffect(Unit) {
+        // Handle errors via snackbar if needed
+    }
 
     Scaffold(
         topBar = {
@@ -67,7 +83,8 @@ fun PickingTasksScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { androidx.compose.material3.SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -103,9 +120,30 @@ fun PickingTasksScreen(
                         isRefreshing = false,
                         onRefresh = { viewModel.refresh() },
                         onTaskClick = { task ->
-                            // Navigate using courseCode to maintain compatibility with existing flow
-                            onNavigateToPickingDetail(task.courseCode)
-                        }
+                            // Status-based navigation (per spec 2.5.1)
+                            isStartingTask = true
+                            viewModel.selectTask(
+                                task = task,
+                                onNavigateToDataInput = { selectedTask ->
+                                    isStartingTask = false
+                                    onNavigateToDataInput(selectedTask.taskId)
+                                },
+                                onNavigateToHistory = { selectedTask ->
+                                    isStartingTask = false
+                                    onNavigateToHistory(selectedTask.taskId)
+                                },
+                                onError = { errorMessage ->
+                                    isStartingTask = false
+                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                        snackbarHostState.showSnackbar(
+                                            message = errorMessage,
+                                            duration = androidx.compose.material3.SnackbarDuration.Short
+                                        )
+                                    }
+                                }
+                            )
+                        },
+                        isStartingTask = isStartingTask
                     )
                 }
             }
@@ -167,7 +205,8 @@ private fun TaskListContent(
     tasks: List<PickingTask>,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
-    onTaskClick: (PickingTask) -> Unit
+    onTaskClick: (PickingTask) -> Unit,
+    isStartingTask: Boolean = false
 ) {
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -182,7 +221,8 @@ private fun TaskListContent(
                 PickingTaskCard(
                     task = task,
                     onClick = { onTaskClick(task) },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    enabled = !isStartingTask
                 )
             }
         }
@@ -193,11 +233,13 @@ private fun TaskListContent(
 private fun PickingTaskCard(
     task: PickingTask,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     Card(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth(),
+        enabled = enabled
     ) {
         Column(
             modifier = Modifier.padding(16.dp),

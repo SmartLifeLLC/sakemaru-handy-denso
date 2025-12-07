@@ -12,7 +12,8 @@ data class PickingTasksState(
     val allCoursesState: TaskListState = TaskListState.Loading,
     val warehouseId: Int? = null,
     val pickerId: Int? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val selectedTask: PickingTask? = null // Task selected for navigation to picking screen
 ) {
     /**
      * Get the state for the currently active tab.

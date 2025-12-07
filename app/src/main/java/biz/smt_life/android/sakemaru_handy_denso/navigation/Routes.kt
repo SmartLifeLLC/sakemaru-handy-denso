@@ -8,11 +8,14 @@ sealed class Routes(val route: String) {
     object Inbound : Routes("inbound")
 
     // Outbound routes (2.5.1 - 2.5.4 spec flow)
-    object PickingList : Routes("picking_list")
-    object OutboundEntry : Routes("outbound_entry/{courseId}") {
-        fun createRoute(courseId: String) = "outbound_entry/$courseId"
+    object PickingList : Routes("picking_list") // 2.5.1 - コース選択
+    object OutboundPicking : Routes("outbound_picking/{taskId}") { // 2.5.2 - データ入力
+        fun createRoute(taskId: Int) = "outbound_picking/$taskId"
     }
-    object OutboundHistory : Routes("outbound_history?courseId={courseId}") {
+    object PickingHistory : Routes("picking_history/{taskId}") { // 2.5.3 - 履歴
+        fun createRoute(taskId: Int) = "picking_history/$taskId"
+    }
+    object OutboundHistory : Routes("outbound_history?courseId={courseId}") { // Legacy
         fun createRoute(courseId: String? = null) = if (courseId != null) {
             "outbound_history?courseId=$courseId"
         } else {
@@ -20,6 +23,11 @@ sealed class Routes(val route: String) {
         }
     }
     object SlipEntry : Routes("slip_entry")
+
+    // Legacy outbound entry (to be deprecated)
+    object OutboundEntry : Routes("outbound_entry/{courseId}") {
+        fun createRoute(courseId: String) = "outbound_entry/$courseId"
+    }
 
     // Legacy outbound routes (to be migrated/removed)
     object OutboundList : Routes("outbound_list")
