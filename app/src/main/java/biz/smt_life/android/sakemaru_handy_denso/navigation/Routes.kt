@@ -6,6 +6,7 @@ sealed class Routes(val route: String) {
     object Settings : Routes("settings")
     object WarehouseSettings : Routes("warehouse_settings")
     object Inbound : Routes("inbound")
+    object InboundWebView : Routes("inbound_webview")
 
     // Outbound routes (2.5.1 - 2.5.4 spec flow)
     object PickingList : Routes("picking_list") // 2.5.1 - コース選択

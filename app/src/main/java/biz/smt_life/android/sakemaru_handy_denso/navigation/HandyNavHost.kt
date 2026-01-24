@@ -20,6 +20,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import biz.smt_life.android.feature.inbound.InboundScreen
+import biz.smt_life.android.feature.inbound.InboundWebViewScreen
 import biz.smt_life.android.feature.login.LoginScreen
 import biz.smt_life.android.feature.main.MainRoute
 import biz.smt_life.android.feature.outbound.tasks.PickingTasksScreen
@@ -61,13 +62,23 @@ fun HandyNavHost(
             )
         }
 
-        composable(Routes.Main.route) {
+        composable(Routes.Main.route) { backStackEntry ->
             MainRoute(
                 onNavigateToWarehouseSettings = {
                     navController.navigate(Routes.WarehouseSettings.route)
                 },
                 onNavigateToInbound = {
                     navController.navigate(Routes.Inbound.route)
+                },
+                onNavigateToInboundWebView = { authKey, warehouseId ->
+                    navController.navigate(Routes.InboundWebView.route) {
+                        launchSingleTop = true
+                    }
+                    // Pass auth_key and warehouse_id via savedStateHandle
+                    navController.currentBackStackEntry?.savedStateHandle?.apply {
+                        set("auth_key", authKey)
+                        set("warehouse_id", warehouseId)
+                    }
                 },
                 onNavigateToOutbound = {
                     // Navigate directly to PickingList (Course Selection)
@@ -95,6 +106,21 @@ fun HandyNavHost(
 
         composable(Routes.Inbound.route) {
             InboundScreen()
+        }
+
+        composable(Routes.InboundWebView.route) { backStackEntry ->
+            // Retrieve auth_key and warehouse_id from savedStateHandle
+            val savedStateHandle = backStackEntry.savedStateHandle
+            val authKey = savedStateHandle.get<String>("auth_key") ?: ""
+            val warehouseId = savedStateHandle.get<String>("warehouse_id") ?: ""
+
+            InboundWebViewScreen(
+                authKey = authKey,
+                warehouseId = warehouseId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
 
         // Outbound routes (2.5.1 - 2.5.4 spec flow)

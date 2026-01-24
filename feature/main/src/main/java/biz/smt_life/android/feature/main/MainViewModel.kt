@@ -65,6 +65,7 @@ class MainViewModel @Inject constructor(
                 val pickerCode = tokenManager.getPickerCode()
                 val pickerName = tokenManager.getPickerName()
                 val warehouseId = tokenManager.getDefaultWarehouseId()
+                val authToken = tokenManager.getToken() ?: ""
 
                 // Get host URL from HostPreferences
                 val hostUrl = hostPreferences.baseUrl.first()
@@ -92,7 +93,9 @@ class MainViewModel @Inject constructor(
                     pendingCounts = pendingCounts,
                     currentDate = currentDate,
                     hostUrl = hostUrl,
-                    appVersion = appVersion
+                    appVersion = appVersion,
+                    authKey = authToken,
+                    warehouseId = warehouseId.toString()
                 )
             } catch (e: Exception) {
                 _uiState.value = MainUiState.Error(

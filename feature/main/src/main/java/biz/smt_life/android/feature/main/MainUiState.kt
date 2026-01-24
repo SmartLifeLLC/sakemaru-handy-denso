@@ -13,7 +13,9 @@ sealed interface MainUiState {
         val pendingCounts: PendingCounts,
         val currentDate: String,
         val hostUrl: String,
-        val appVersion: String
+        val appVersion: String,
+        val authKey: String,
+        val warehouseId: String
     ) : MainUiState
 
     data class Error(

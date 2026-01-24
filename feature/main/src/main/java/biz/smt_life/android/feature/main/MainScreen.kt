@@ -21,6 +21,7 @@ import biz.smt_life.android.core.domain.model.Warehouse
 fun MainRoute(
     onNavigateToWarehouseSettings: () -> Unit,
     onNavigateToInbound: () -> Unit,
+    onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
     onNavigateToMove: () -> Unit,
     onNavigateToInventory: () -> Unit,
@@ -41,6 +42,9 @@ fun MainRoute(
         state = state,
         onNavigateToWarehouseSettings = onNavigateToWarehouseSettings,
         onNavigateToInbound = onNavigateToInbound,
+        onNavigateToInboundWebView = { authKey, warehouseId ->
+            onNavigateToInboundWebView(authKey, warehouseId)
+        },
         onNavigateToOutbound = onNavigateToOutbound,
         onNavigateToMove = onNavigateToMove,
         onNavigateToInventory = onNavigateToInventory,
@@ -55,6 +59,7 @@ fun MainScreen(
     state: MainUiState,
     onNavigateToWarehouseSettings: () -> Unit,
     onNavigateToInbound: () -> Unit,
+    onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
     onNavigateToMove: () -> Unit,
     onNavigateToInventory: () -> Unit,
@@ -77,8 +82,11 @@ fun MainScreen(
                 currentDate = state.currentDate,
                 hostUrl = state.hostUrl,
                 appVersion = state.appVersion,
+                authKey = state.authKey,
+                warehouseId = state.warehouseId,
                 onNavigateToWarehouseSettings = onNavigateToWarehouseSettings,
                 onNavigateToInbound = onNavigateToInbound,
+                onNavigateToInboundWebView = onNavigateToInboundWebView,
                 onNavigateToOutbound = onNavigateToOutbound,
                 onNavigateToMove = onNavigateToMove,
                 onNavigateToInventory = onNavigateToInventory,
@@ -117,8 +125,11 @@ private fun ReadyContent(
     currentDate: String,
     hostUrl: String,
     appVersion: String,
+    authKey: String,
+    warehouseId: String,
     onNavigateToWarehouseSettings: () -> Unit,
     onNavigateToInbound: () -> Unit,
+    onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
     onNavigateToMove: () -> Unit,
     onNavigateToInventory: () -> Unit,
@@ -197,7 +208,7 @@ private fun ReadyContent(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Button(
-                onClick = onNavigateToInbound,
+                onClick = { onNavigateToInboundWebView(authKey, warehouseId) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
@@ -325,6 +336,7 @@ private fun MainScreenLoadingPreview() {
             state = MainUiState.Loading,
             onNavigateToWarehouseSettings = {},
             onNavigateToInbound = {},
+            onNavigateToInboundWebView = { _, _ -> },
             onNavigateToOutbound = {},
             onNavigateToMove = {},
             onNavigateToInventory = {},
@@ -347,10 +359,13 @@ private fun MainScreenReadyPreview() {
                 pendingCounts = PendingCounts(5, 12, 3),
                 currentDate = "2024/10/07 Mon",
                 hostUrl = "https://handy.click",
-                appVersion = "Ver.1.1.1"
+                appVersion = "Ver.1.1.1",
+                authKey = "test_auth_key",
+                warehouseId = "001"
             ),
             onNavigateToWarehouseSettings = {},
             onNavigateToInbound = {},
+            onNavigateToInboundWebView = { _, _ -> },
             onNavigateToOutbound = {},
             onNavigateToMove = {},
             onNavigateToInventory = {},
@@ -369,6 +384,7 @@ private fun MainScreenErrorPreview() {
             state = MainUiState.Error("Network connection failed"),
             onNavigateToWarehouseSettings = {},
             onNavigateToInbound = {},
+            onNavigateToInboundWebView = { _, _ -> },
             onNavigateToOutbound = {},
             onNavigateToMove = {},
             onNavigateToInventory = {},
