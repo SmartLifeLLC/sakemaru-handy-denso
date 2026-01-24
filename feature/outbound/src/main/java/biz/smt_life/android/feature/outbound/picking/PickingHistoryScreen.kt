@@ -175,7 +175,7 @@ private fun HistoryListContent(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "エリア: ${state.task.pickingAreaName}",
+                        text = "フロア: ${state.task.pickingAreaName}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

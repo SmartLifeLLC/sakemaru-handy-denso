@@ -42,6 +42,6 @@ class HostPreferences @Inject constructor(
 
     companion object {
         private val BASE_URL_KEY = stringPreferencesKey("base_url")
-        const val DEFAULT_BASE_URL = "https://smtlife.smart-wms.click"
+        const val DEFAULT_BASE_URL = "https://wms.lw-hana.net/"
     }
 }

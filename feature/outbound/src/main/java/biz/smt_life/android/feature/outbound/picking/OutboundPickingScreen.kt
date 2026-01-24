@@ -235,7 +235,7 @@ private fun CourseHeaderCard(
             )
 
             Text(
-                text = "エリア: $pickingAreaName",
+                text = "フロア: $pickingAreaName",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

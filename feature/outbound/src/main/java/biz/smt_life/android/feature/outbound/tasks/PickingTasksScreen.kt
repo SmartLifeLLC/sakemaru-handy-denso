@@ -255,7 +255,7 @@ private fun PickingTaskCard(
 
             // Picking area
             Text(
-                text = "エリア: ${task.pickingAreaName}",
+                text = "フロア: ${task.pickingAreaName}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
