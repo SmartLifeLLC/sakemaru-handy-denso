@@ -8,6 +8,13 @@ sealed class Routes(val route: String) {
     object Inbound : Routes("inbound")
     object InboundWebView : Routes("inbound_webview")
 
+    // Native Incoming routes (入庫処理)
+    object IncomingWarehouseSelection : Routes("incoming_warehouse_selection")
+    object IncomingProductList : Routes("incoming_product_list")
+    object IncomingScheduleList : Routes("incoming_schedule_list")
+    object IncomingInput : Routes("incoming_input")
+    object IncomingHistory : Routes("incoming_history")
+
     // Outbound routes (2.5.1 - 2.5.4 spec flow)
     object PickingList : Routes("picking_list") // 2.5.1 - コース選択
     object OutboundPicking : Routes("outbound_picking/{taskId}") { // 2.5.2 - データ入力

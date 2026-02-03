@@ -46,12 +46,12 @@ class SettingsViewModel @Inject constructor(
 
         // Validation
         if (hostUrl.isBlank()) {
-            _state.update { it.copy(errorMessage = "Host URL cannot be empty") }
+            _state.update { it.copy(errorMessage = "ホストURLを入力してください") }
             return
         }
 
         if (!Patterns.WEB_URL.matcher(hostUrl).matches()) {
-            _state.update { it.copy(errorMessage = "Invalid URL format") }
+            _state.update { it.copy(errorMessage = "無効なURL形式です") }
             return
         }
 
@@ -67,7 +67,7 @@ class SettingsViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isLoading = false,
-                        successMessage = "Host URL saved successfully",
+                        successMessage = "ホストURLを保存しました",
                         errorMessage = null,
                         hostUrl = hostUrl
                     )
@@ -76,7 +76,7 @@ class SettingsViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = "Failed to save: ${e.message}",
+                        errorMessage = "保存に失敗しました: ${e.message}",
                         successMessage = null
                     )
                 }

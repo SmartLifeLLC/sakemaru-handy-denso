@@ -22,6 +22,9 @@
 ##
 ##############################################################################
 
+# Set JAVA_HOME to JDK 17 for this project
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+
 # Attempt to set APP_HOME
 # Resolve links: $0 may be a link
 PRG="$0"

@@ -99,7 +99,7 @@ class MainViewModel @Inject constructor(
                 )
             } catch (e: Exception) {
                 _uiState.value = MainUiState.Error(
-                    message = e.message ?: "Unknown error occurred"
+                    message = e.message ?: "不明なエラーが発生しました"
                 )
             }
         }

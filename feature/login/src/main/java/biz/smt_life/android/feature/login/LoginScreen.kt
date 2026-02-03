@@ -16,10 +16,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import biz.smt_life.android.core.designsystem.theme.HandyTheme
 import biz.smt_life.android.core.designsystem.component.HandyTextField
-import biz.smt_life.android.core.ui.HostPreferences
+import biz.smt_life.android.core.designsystem.theme.HandyTheme
+import biz.smt_life.android.core.designsystem.util.SoundUtils
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -38,9 +39,7 @@ fun LoginScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val focusManager = LocalFocusManager.current
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val hostPreferences = remember { HostPreferences(context) }
-    val hostUrl by hostPreferences.baseUrl.collectAsState(initial = HostPreferences.DEFAULT_BASE_URL)
+    val hostUrl by viewModel.hostUrl.collectAsState(initial = "")
 
     // Get today's date in Asia/Tokyo timezone
     val today = remember {
@@ -65,12 +64,15 @@ fun LoginScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "DENSO Handy",
-                        style = MaterialTheme.typography.titleMedium
+                        text = "DENSOハンディ",
+                        fontSize = 20.sp
                     ) },
                 actions = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    IconButton(onClick = {
+                        SoundUtils.playBeep()
+                        onNavigateToSettings()
+                    }) {
+                        Icon(Icons.Default.Settings, contentDescription = "設定")
                     }
                 }
             )
@@ -92,15 +94,15 @@ fun LoginScreen(
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    text = "Warehouse Management",
-                    style = MaterialTheme.typography.titleSmall,
+                    text = "倉庫管理システム",
+                    fontSize = 18.sp,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
                 HandyTextField(
                     value = state.staffCode,
                     onValueChange = viewModel::onStaffCodeChange,
-                    label = "Staff Code",
+                    label = "スタッフコード",
                     enabled = !state.isLoading,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(
@@ -114,7 +116,7 @@ fun LoginScreen(
                 HandyTextField(
                     value = state.password,
                     onValueChange = viewModel::onPasswordChange,
-                    label = "Password",
+                    label = "パスワード",
                     enabled = !state.isLoading,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -140,7 +142,10 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Button(
-                    onClick = viewModel::login,
+                    onClick = {
+                        SoundUtils.playBeep()
+                        viewModel.login()
+                    },
                     enabled = !state.isLoading,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -152,7 +157,7 @@ fun LoginScreen(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                     } else {
-                        Text("Login")
+                        Text("ログイン", fontSize = 16.sp)
                     }
                 }
             }
@@ -163,18 +168,18 @@ fun LoginScreen(
                 modifier = Modifier.padding(bottom = 4.dp)
             ) {
                 Text(
-                    text = "Version $appVersion",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "バージョン $appVersion",
+                    fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = today,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = hostUrl,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -285,12 +290,15 @@ private fun LoginScreenContent(
             TopAppBar(
                 title = {
                     Text(
-                        text = "DENSO Handy",
-                        style = MaterialTheme.typography.titleMedium
+                        text = "DENSOハンディ",
+                        fontSize = 20.sp
                     ) },
                 actions = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    IconButton(onClick = {
+                        SoundUtils.playBeep()
+                        onNavigateToSettings()
+                    }) {
+                        Icon(Icons.Default.Settings, contentDescription = "設定")
                     }
                 }
             )
@@ -312,15 +320,15 @@ private fun LoginScreenContent(
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    text = "Warehouse Management",
-                    style = MaterialTheme.typography.titleSmall,
+                    text = "倉庫管理システム",
+                    fontSize = 18.sp,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
                 HandyTextField(
                     value = staffCode,
                     onValueChange = onStaffCodeChange,
-                    label = "Staff Code",
+                    label = "スタッフコード",
                     enabled = !isLoading,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(
@@ -334,7 +342,7 @@ private fun LoginScreenContent(
                 HandyTextField(
                     value = password,
                     onValueChange = onPasswordChange,
-                    label = "Password",
+                    label = "パスワード",
                     enabled = !isLoading,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -360,7 +368,10 @@ private fun LoginScreenContent(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Button(
-                    onClick = onLogin,
+                    onClick = {
+                        SoundUtils.playBeep()
+                        onLogin()
+                    },
                     enabled = !isLoading,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -372,7 +383,7 @@ private fun LoginScreenContent(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                     } else {
-                        Text("Login")
+                        Text("ログイン", fontSize = 16.sp)
                     }
                 }
             }
@@ -383,18 +394,18 @@ private fun LoginScreenContent(
                 modifier = Modifier.padding(bottom = 4.dp)
             ) {
                 Text(
-                    text = "Version $appVersion",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "バージョン $appVersion",
+                    fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = today,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = hostUrl,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )

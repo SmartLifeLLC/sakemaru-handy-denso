@@ -1,10 +1,14 @@
 package biz.smt_life.android.sakemaru_handy_denso
 
 import android.os.Bundle
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,6 +45,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Hide navigation bar (immersive mode)
+        hideNavigationBar()
+
         // Keep screen awake during operations
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -76,6 +83,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
 
+        // Keep navigation bar hidden
+        hideNavigationBar()
+
         // Validate session on resume if already validated once
         if (isSessionValidated && tokenManager.isLoggedIn()) {
             lifecycleScope.launch {
@@ -86,6 +96,18 @@ class MainActivity : ComponentActivity() {
                         recreate()
                     }
             }
+        }
+    }
+
+    /**
+     * Hide navigation bar using immersive sticky mode.
+     */
+    private fun hideNavigationBar() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
+            controller.hide(WindowInsetsCompat.Type.navigationBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 

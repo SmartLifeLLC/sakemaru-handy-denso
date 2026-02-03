@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import biz.smt_life.android.core.domain.repository.AuthRepository
 import biz.smt_life.android.core.network.NetworkException
+import biz.smt_life.android.core.ui.HostPreferences
 import biz.smt_life.android.core.ui.TokenManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,11 +21,14 @@ import javax.inject.Inject
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
-    private val tokenManager: TokenManager
+    private val tokenManager: TokenManager,
+    private val hostPreferences: HostPreferences
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LoginState())
     val state: StateFlow<LoginState> = _state.asStateFlow()
+
+    val hostUrl = hostPreferences.baseUrl
 
     fun onStaffCodeChange(value: String) {
         _state.update { it.copy(staffCode = value, errorMessage = null) }
@@ -37,7 +41,7 @@ class LoginViewModel @Inject constructor(
     fun login() {
         val currentState = _state.value
         if (currentState.staffCode.isBlank() || currentState.password.isBlank()) {
-            _state.update { it.copy(errorMessage = "Please enter staff code and password") }
+            _state.update { it.copy(errorMessage = "スタッフコードとパスワードを入力してください") }
             return
         }
 
@@ -58,11 +62,11 @@ class LoginViewModel @Inject constructor(
                 }
                 .onFailure { error ->
                     val message = when (error) {
-                        is NetworkException.Unauthorized -> "Invalid credentials"
-                        is NetworkException.NetworkError -> "Network connection failed"
-                        is NetworkException.ServerError -> "Server error. Please try again."
+                        is NetworkException.Unauthorized -> "認証情報が無効です"
+                        is NetworkException.NetworkError -> "ネットワーク接続に失敗しました"
+                        is NetworkException.ServerError -> "サーバーエラーが発生しました"
                         is NetworkException.ValidationError -> error.msg
-                        else -> error.message ?: "Unknown error"
+                        else -> error.message ?: "不明なエラー"
                     }
                     _state.update { it.copy(isLoading = false, errorMessage = message) }
                 }

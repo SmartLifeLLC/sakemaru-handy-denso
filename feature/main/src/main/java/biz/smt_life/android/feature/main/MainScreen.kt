@@ -1,6 +1,8 @@
 package biz.smt_life.android.feature.main
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Settings
@@ -8,12 +10,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import biz.smt_life.android.core.designsystem.theme.HandyTheme
+import biz.smt_life.android.core.designsystem.util.SoundUtils
 import biz.smt_life.android.core.domain.model.PendingCounts
 import biz.smt_life.android.core.domain.model.Warehouse
 
@@ -98,7 +103,7 @@ fun MainScreen(
 
         is MainUiState.Error -> {
             ErrorContent(
-                message = state.message,
+                message = state.message ?: "不明なエラー",
                 onRetry = onRetry,
                 modifier = modifier
             )
@@ -143,8 +148,8 @@ private fun ReadyContent(
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
-            title = { Text("Logout") },
-            text = { Text("Are you sure you want to logout?") },
+            title = { Text("ログアウト") },
+            text = { Text("ログアウトしますか？") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -152,12 +157,12 @@ private fun ReadyContent(
                         onLogoutClick()
                     }
                 ) {
-                    Text("Logout")
+                    Text("ログアウト")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("Cancel")
+                    Text("キャンセル")
                 }
             }
         )
@@ -174,7 +179,7 @@ private fun ReadyContent(
             // Picker info
             if (pickerCode != null && pickerName != null) {
                 Text(
-                    text = "Worker: $pickerCode $pickerName",
+                    text = "作業者: $pickerCode $pickerName",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -207,55 +212,102 @@ private fun ReadyContent(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Button(
-                onClick = { onNavigateToInboundWebView(authKey, warehouseId) },
-                modifier = Modifier.fillMaxWidth()
+            OutlinedButton(
+                onClick = {
+                    SoundUtils.playBeep()
+                    onNavigateToInboundWebView(authKey, warehouseId)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, Color.Gray),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                )
             ) {
                 Text(
-//                    text = "入庫処理(${pendingCounts.inbound.toString().padStart(2, '0')})",
                     text = "入庫処理",
+                    fontSize = 24.sp,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
 
-            Button(
-                onClick = onNavigateToOutbound,
-                modifier = Modifier.fillMaxWidth()
+            OutlinedButton(
+                onClick = {
+                    SoundUtils.playBeep()
+                    onNavigateToOutbound()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, Color.Gray),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                )
             ) {
                 Text(
-//                    text = "出庫処理(${pendingCounts.outbound.toString().padStart(2, '0')})",
                     text = "出庫処理",
+                    fontSize = 24.sp,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
 
-            Button(
-                onClick = onNavigateToMove,
-                modifier = Modifier.fillMaxWidth()
+            OutlinedButton(
+                onClick = {
+                    SoundUtils.playBeep()
+                    onNavigateToMove()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, Color.Gray),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                )
             ) {
                 Text(
                     text = "移動処理",
+                    fontSize = 24.sp,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
 
-            Button(
-                onClick = onNavigateToInventory,
-                modifier = Modifier.fillMaxWidth()
+            OutlinedButton(
+                onClick = {
+                    SoundUtils.playBeep()
+                    onNavigateToInventory()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, Color.Gray),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                )
             ) {
                 Text(
-//                    text = "棚卸処理(${pendingCounts.inventory.toString().padStart(2, '0')})",
                     text = "棚卸処理",
+                    fontSize = 24.sp,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
 
-            Button(
-                onClick = onNavigateToLocationSearch,
-                modifier = Modifier.fillMaxWidth()
+            OutlinedButton(
+                onClick = {
+                    SoundUtils.playBeep()
+                    onNavigateToLocationSearch()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, Color.Gray),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                )
             ) {
                 Text(
                     text = "ロケ検索",
+                    fontSize = 24.sp,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
@@ -315,7 +367,7 @@ private fun ErrorContent(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Error: $message",
+            text = "エラー: $message",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.error,
             textAlign = TextAlign.Center,
@@ -323,7 +375,7 @@ private fun ErrorContent(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = onRetry) {
-            Text("Retry")
+            Text("再試行")
         }
     }
 }
@@ -354,7 +406,7 @@ private fun MainScreenReadyPreview() {
         MainScreen(
             state = MainUiState.Ready(
                 pickerCode = "worker01",
-                pickerName = "Warehouse Worker",
+                pickerName = "倉庫作業者",
                 warehouse = Warehouse("001", "東京倉庫"),
                 pendingCounts = PendingCounts(5, 12, 3),
                 currentDate = "2024/10/07 Mon",
