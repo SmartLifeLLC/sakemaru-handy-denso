@@ -1,5 +1,6 @@
 package biz.smt_life.android.feature.settings
 
+import android.util.Patterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import biz.smt_life.android.core.ui.HostPreferences
@@ -41,7 +42,7 @@ class SettingsViewModel @Inject constructor(
 
     fun saveHostUrl() {
         val currentState = _state.value
-        val hostUrl = currentState.hostUrl.trim()
+        var hostUrl = currentState.hostUrl.trim()
 
         // Validation
         if (hostUrl.isBlank()) {
@@ -49,9 +50,13 @@ class SettingsViewModel @Inject constructor(
             return
         }
 
-        if (!hostUrl.startsWith("http://") && !hostUrl.startsWith("https://")) {
-            _state.update { it.copy(errorMessage = "Host URL must start with http:// or https://") }
+        if (!Patterns.WEB_URL.matcher(hostUrl).matches()) {
+            _state.update { it.copy(errorMessage = "Invalid URL format") }
             return
+        }
+
+        if (!hostUrl.endsWith("/")) {
+            hostUrl += "/"
         }
 
         viewModelScope.launch {
@@ -63,7 +68,8 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         isLoading = false,
                         successMessage = "Host URL saved successfully",
-                        errorMessage = null
+                        errorMessage = null,
+                        hostUrl = hostUrl
                     )
                 }
             } catch (e: Exception) {

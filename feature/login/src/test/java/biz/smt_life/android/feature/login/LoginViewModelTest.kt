@@ -42,7 +42,7 @@ class LoginViewModelTest {
 
     @Test
     fun `login success saves token and updates state`() = runTest {
-        val authResult = AuthResult("token", "S001", "Worker", "operator")
+        val authResult = AuthResult("token", 1, "S001", "Worker", 1)
         coEvery { authRepository.login("worker01", "1234") } returns Result.success(authResult)
 
         viewModel.onStaffCodeChange("worker01")
@@ -56,7 +56,7 @@ class LoginViewModelTest {
     }
 
     @Test
-    fun `login failure shows error message`() = runTest {
+    fun `login failure with invalid credentials shows error and does not save token`() = runTest {
         coEvery { authRepository.login(any(), any()) } returns Result.failure(
             NetworkException.Unauthorized("Invalid credentials")
         )
@@ -68,6 +68,7 @@ class LoginViewModelTest {
 
         assertEquals("Invalid credentials", viewModel.state.value.errorMessage)
         assertFalse(viewModel.state.value.isSuccess)
+        coVerify(exactly = 0) { tokenManager.saveToken(any()) }
     }
 
     @Test
