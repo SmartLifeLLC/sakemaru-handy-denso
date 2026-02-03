@@ -514,18 +514,23 @@ class IncomingViewModel @Inject constructor(
                     }
                 }
 
-                // Success
+                // Success - show message but keep schedule until navigation
                 _state.update {
                     it.copy(
                         isSubmitting = false,
                         successMessage = "入庫を確定しました",
-                        currentWorkItem = null,
-                        selectedSchedule = null
+                        currentWorkItem = null
                     )
                 }
 
                 // Reload products to get updated quantities
                 loadProducts()
+
+                // Wait for success message to be shown before navigating
+                delay(1500)
+
+                // Clear schedule after navigation
+                _state.update { it.copy(selectedSchedule = null) }
 
                 onSuccess()
 

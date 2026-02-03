@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,33 +42,42 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import biz.smt_life.android.core.domain.model.Location
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
@@ -82,10 +93,24 @@ fun IncomingInputScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val focusManager = LocalFocusManager.current
 
+    val quantityFocusRequester = remember { FocusRequester() }
     val expirationFocusRequester = remember { FocusRequester() }
     val locationFocusRequester = remember { FocusRequester() }
-    val quantityFocusRequester = remember { FocusRequester() }
+
+    // Track current focused field index (0: quantity, 1: expiration, 2: location)
+    var currentFieldIndex by remember { mutableIntStateOf(0) }
+    val focusRequesters = listOf(quantityFocusRequester, expirationFocusRequester, locationFocusRequester)
+
+    // Request focus on quantity field when displayed
+    LaunchedEffect(Unit) {
+        quantityFocusRequester.requestFocus()
+    }
+
+    // Date picker state
+    var showDatePicker by remember { mutableStateOf(false) }
+
 
     val schedule = state.selectedSchedule
     val product = state.selectedProduct
@@ -135,7 +160,7 @@ fun IncomingInputScreen(
         },
         bottomBar = {
             FunctionKeyBar(
-                f1 = FunctionKey("自動") { viewModel.setQuantityToExpected() },
+                f1 = FunctionKey("賞味") { showDatePicker = true },
                 f2 = FunctionKey("戻る", onNavigateBack),
                 f3 = FunctionKey("登録") {
                     if (viewModel.canSubmit()) {
@@ -189,12 +214,32 @@ fun IncomingInputScreen(
                             onNavigateBack()
                             true
                         }
+                        Key.F3 -> {
+                            // F3 = 登録
+                            if (viewModel.canSubmit()) {
+                                viewModel.submitEntry(onSubmitSuccess)
+                            }
+                            true
+                        }
+                        Key.F1 -> {
+                            // F1 = 賞味期限カレンダー表示
+                            showDatePicker = true
+                            true
+                        }
                         Key.DirectionDown, Key.Tab -> {
                             // Move focus to next field
+                            if (currentFieldIndex < focusRequesters.size - 1) {
+                                currentFieldIndex++
+                                focusRequesters[currentFieldIndex].requestFocus()
+                            }
                             true
                         }
                         Key.DirectionUp -> {
                             // Move focus to previous field
+                            if (currentFieldIndex > 0) {
+                                currentFieldIndex--
+                                focusRequesters[currentFieldIndex].requestFocus()
+                            }
                             true
                         }
                         else -> false
@@ -218,6 +263,38 @@ fun IncomingInputScreen(
 
             HorizontalDivider()
 
+            // Date picker dialog
+            if (showDatePicker) {
+                val datePickerState = rememberDatePickerState()
+                DatePickerDialog(
+                    onDismissRequest = { showDatePicker = false },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                datePickerState.selectedDateMillis?.let { millis ->
+                                    val date = Instant.ofEpochMilli(millis)
+                                        .atZone(ZoneId.systemDefault())
+                                        .toLocalDate()
+                                    viewModel.onExpirationDateChange(
+                                        date.format(DateTimeFormatter.ISO_LOCAL_DATE)
+                                    )
+                                }
+                                showDatePicker = false
+                            }
+                        ) {
+                            Text("OK")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDatePicker = false }) {
+                            Text("キャンセル")
+                        }
+                    }
+                ) {
+                    DatePicker(state = datePickerState)
+                }
+            }
+
             // Input form
             Column(
                 modifier = Modifier
@@ -225,15 +302,22 @@ fun IncomingInputScreen(
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Expiration date input
-                InputField(
-                    icon = Icons.Default.DateRange,
-                    label = "賞味期限 (任意)",
+                // Quantity input (first)
+                QuantityInputField(
+                    value = state.inputQuantity,
+                    onValueChange = viewModel::onQuantityChange,
+                    expectedQuantity = schedule.remainingQuantity,
+                    focusRequester = quantityFocusRequester,
+                    onFocusChanged = { if (it) currentFieldIndex = 0 }
+                )
+
+                // Expiration date input with calendar
+                ExpirationDateField(
                     value = state.inputExpirationDate,
                     onValueChange = viewModel::onExpirationDateChange,
-                    placeholder = "YYYY-MM-DD",
-                    keyboardType = KeyboardType.Number,
-                    focusRequester = expirationFocusRequester
+                    onCalendarClick = { showDatePicker = true },
+                    focusRequester = expirationFocusRequester,
+                    onFocusChanged = { if (it) currentFieldIndex = 1 }
                 )
 
                 // Location input with autocomplete
@@ -243,15 +327,8 @@ fun IncomingInputScreen(
                     suggestions = state.locationSuggestions,
                     isLoading = state.isLoadingLocations,
                     onLocationSelected = viewModel::selectLocation,
-                    focusRequester = locationFocusRequester
-                )
-
-                // Quantity input
-                QuantityInputField(
-                    value = state.inputQuantity,
-                    onValueChange = viewModel::onQuantityChange,
-                    expectedQuantity = schedule.remainingQuantity,
-                    focusRequester = quantityFocusRequester
+                    focusRequester = locationFocusRequester,
+                    onFocusChanged = { if (it) currentFieldIndex = 2 }
                 )
             }
         }
@@ -327,15 +404,14 @@ private fun ArrivalDateBar(arrivalDate: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InputField(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
+private fun ExpirationDateField(
     value: String,
     onValueChange: (String) -> Unit,
-    placeholder: String,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    focusRequester: FocusRequester
+    onCalendarClick: () -> Unit,
+    focusRequester: FocusRequester,
+    onFocusChanged: (Boolean) -> Unit
 ) {
     Column {
         Row(
@@ -343,7 +419,7 @@ private fun InputField(
             modifier = Modifier.padding(bottom = 2.dp)
         ) {
             Icon(
-                imageVector = icon,
+                imageVector = Icons.Default.DateRange,
                 contentDescription = null,
                 modifier = Modifier
                     .width(20.dp)
@@ -352,7 +428,7 @@ private fun InputField(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = label,
+                text = "賞味期限 (任意)",
                 style = MaterialTheme.typography.labelMedium
             )
         }
@@ -362,11 +438,20 @@ private fun InputField(
             onValueChange = onValueChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(focusRequester),
-            placeholder = { Text(placeholder) },
+                .focusRequester(focusRequester)
+                .onFocusChanged { onFocusChanged(it.isFocused) },
+            placeholder = { Text("YYYY-MM-DD") },
             singleLine = true,
+            trailingIcon = {
+                IconButton(onClick = onCalendarClick) {
+                    Icon(
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = "カレンダーを開く"
+                    )
+                }
+            },
             keyboardOptions = KeyboardOptions(
-                keyboardType = keyboardType,
+                keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Next
             )
         )
@@ -380,7 +465,8 @@ private fun LocationInputField(
     suggestions: List<Location>,
     isLoading: Boolean,
     onLocationSelected: (Location) -> Unit,
-    focusRequester: FocusRequester
+    focusRequester: FocusRequester,
+    onFocusChanged: (Boolean) -> Unit
 ) {
     var showSuggestions by remember { mutableStateOf(false) }
 
@@ -415,6 +501,7 @@ private fun LocationInputField(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .onFocusChanged { focusState ->
+                        onFocusChanged(focusState.isFocused)
                         if (!focusState.isFocused) {
                             showSuggestions = false
                         }
@@ -464,10 +551,23 @@ private fun QuantityInputField(
     value: String,
     onValueChange: (String) -> Unit,
     expectedQuantity: Int,
-    focusRequester: FocusRequester
+    focusRequester: FocusRequester,
+    onFocusChanged: (Boolean) -> Unit
 ) {
     val currentQty = value.toIntOrNull() ?: 0
     val isValid = currentQty > 0 && currentQty <= expectedQuantity
+
+    // Use TextFieldValue for select-all on focus
+    var textFieldValue by remember(value) {
+        mutableStateOf(TextFieldValue(value, TextRange(0, value.length)))
+    }
+
+    // Update when external value changes
+    LaunchedEffect(value) {
+        if (textFieldValue.text != value) {
+            textFieldValue = TextFieldValue(value, TextRange(0, value.length))
+        }
+    }
 
     Column {
         Row(
@@ -490,11 +590,23 @@ private fun QuantityInputField(
         }
 
         OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
+            value = textFieldValue,
+            onValueChange = { newValue ->
+                textFieldValue = newValue
+                onValueChange(newValue.text)
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(focusRequester),
+                .focusRequester(focusRequester)
+                .onFocusChanged { focusState ->
+                    onFocusChanged(focusState.isFocused)
+                    // Select all when gaining focus
+                    if (focusState.isFocused) {
+                        textFieldValue = textFieldValue.copy(
+                            selection = TextRange(0, textFieldValue.text.length)
+                        )
+                    }
+                },
             placeholder = { Text("入庫数量") },
             singleLine = true,
             isError = value.isNotEmpty() && !isValid,
@@ -512,7 +624,7 @@ private fun QuantityInputField(
             } else null,
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Number,
-                imeAction = ImeAction.Done
+                imeAction = ImeAction.Next
             )
         )
     }
