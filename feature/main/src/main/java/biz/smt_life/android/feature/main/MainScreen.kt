@@ -1,6 +1,9 @@
 package biz.smt_life.android.feature.main
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -10,7 +13,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -168,10 +178,53 @@ private fun ReadyContent(
         )
     }
 
+    val screenFocusRequester = remember { FocusRequester() }
+
+    // Request focus when screen appears
+    LaunchedEffect(Unit) {
+        screenFocusRequester.requestFocus()
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .focusRequester(screenFocusRequester)
+            .focusable()
+            .onKeyEvent { event ->
+                when (event.key) {
+                    Key.F1 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToInboundWebView(authKey, warehouseId)
+                        true
+                    }
+                    Key.F2 -> {
+                        showLogoutDialog = true
+                        true
+                    }
+                    Key.F4 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToOutbound()
+                        true
+                    }
+                    Key.F5 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToMove()
+                        true
+                    }
+                    Key.F6 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToInventory()
+                        true
+                    }
+                    Key.F7 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToLocationSearch()
+                        true
+                    }
+                    else -> false
+                }
+            },
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         // Header with picker info and warehouse
@@ -207,108 +260,94 @@ private fun ReadyContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Main menu buttons
+        // Main menu buttons - 2x2 grid + 1 centered
         Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            OutlinedButton(
-                onClick = {
-                    SoundUtils.playBeep()
-                    onNavigateToInboundWebView(authKey, warehouseId)
-                },
+            // Row 1: 入庫 [F1], 出庫 [F4]
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White,
-                    contentColor = Color.Black
-                )
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "入庫処理",
-                    fontSize = 24.sp,
-                    modifier = Modifier.padding(vertical = 8.dp)
+                MenuButton(
+                    label = "入庫 [F1]",
+                    count = pendingCounts.inbound,
+                    topBorderColor = Color(0xFF2196F3), // Blue
+                    onClick = {
+                        SoundUtils.playBeep()
+                        onNavigateToInboundWebView(authKey, warehouseId)
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+
+                MenuButton(
+                    label = "出庫 [F4]",
+                    count = pendingCounts.outbound,
+                    topBorderColor = Color(0xFFE91E63), // Pink/Red
+                    onClick = {
+                        SoundUtils.playBeep()
+                        onNavigateToOutbound()
+                    },
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            OutlinedButton(
-                onClick = {
-                    SoundUtils.playBeep()
-                    onNavigateToOutbound()
-                },
+            // Row 2: 移動, 棚卸
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White,
-                    contentColor = Color.Black
-                )
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "出庫処理",
-                    fontSize = 24.sp,
-                    modifier = Modifier.padding(vertical = 8.dp)
+                MenuButton(
+                    label = "移動",
+                    count = 0,
+                    topBorderColor = Color(0xFF9C27B0), // Purple
+                    onClick = {
+                        SoundUtils.playBeep()
+                        onNavigateToMove()
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+
+                MenuButton(
+                    label = "棚卸",
+                    count = pendingCounts.inventory,
+                    topBorderColor = Color(0xFFFF9800), // Orange
+                    onClick = {
+                        SoundUtils.playBeep()
+                        onNavigateToInventory()
+                    },
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            OutlinedButton(
-                onClick = {
-                    SoundUtils.playBeep()
-                    onNavigateToMove()
-                },
+            // Row 3: ロケ検索, 終了 [F2]
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White,
-                    contentColor = Color.Black
-                )
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "移動処理",
-                    fontSize = 24.sp,
-                    modifier = Modifier.padding(vertical = 8.dp)
+                MenuButton(
+                    label = "ロケ検索",
+                    count = null,
+                    topBorderColor = Color(0xFF607D8B), // Blue Grey
+                    onClick = {
+                        SoundUtils.playBeep()
+                        onNavigateToLocationSearch()
+                    },
+                    modifier = Modifier.weight(1f)
                 )
-            }
 
-            OutlinedButton(
-                onClick = {
-                    SoundUtils.playBeep()
-                    onNavigateToInventory()
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White,
-                    contentColor = Color.Black
-                )
-            ) {
-                Text(
-                    text = "棚卸処理",
-                    fontSize = 24.sp,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
-
-            OutlinedButton(
-                onClick = {
-                    SoundUtils.playBeep()
-                    onNavigateToLocationSearch()
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White,
-                    contentColor = Color.Black
-                )
-            ) {
-                Text(
-                    text = "ロケ検索",
-                    fontSize = 24.sp,
-                    modifier = Modifier.padding(vertical = 8.dp)
+                MenuButton(
+                    label = "終了 [F2]",
+                    count = null,
+                    topBorderColor = Color(0xFF795548), // Brown
+                    onClick = {
+                        showLogoutDialog = true
+                    },
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
@@ -376,6 +415,64 @@ private fun ErrorContent(
         Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = onRetry) {
             Text("再試行")
+        }
+    }
+}
+
+/**
+ * Menu button with colored top border accent.
+ */
+@Composable
+private fun MenuButton(
+    label: String,
+    count: Int?,
+    topBorderColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(8.dp)
+
+    Surface(
+        modifier = modifier
+            .aspectRatio(1.5f)
+            .clip(shape)
+            .clickable(onClick = onClick)
+            .border(1.dp, Color.LightGray, shape),
+        color = Color.White,
+        shadowElevation = 2.dp,
+        shape = shape
+    ) {
+        Column {
+            // Top colored border
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .background(topBorderColor)
+            )
+
+            // Content
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+                if (count != null) {
+                    Text(
+                        text = "(%02d)".format(count),
+                        fontSize = 16.sp,
+                        color = Color.DarkGray
+                    )
+                }
+            }
         }
     }
 }
