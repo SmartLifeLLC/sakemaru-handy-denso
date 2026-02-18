@@ -296,22 +296,10 @@ fun HandyNavHost(
                         pickingTasksViewModel.clearSelectedTask()
                         navController.popBackStack()
                     },
-                    onNavigateToCourseList = {
-                        pickingTasksViewModel.clearSelectedTask()
-                        navController.popBackStack()
-                    },
                     onNavigateToHistory = {
-                        // Navigate to PickingHistory screen (2.5.3)
                         navController.navigate(Routes.PickingHistory.createRoute(taskId))
                     },
-                    onNavigateToMain = {
-                        pickingTasksViewModel.clearSelectedTask()
-                        navController.navigate(Routes.Main.route) {
-                            popUpTo(Routes.PickingList.route) { inclusive = true }
-                        }
-                    },
                     onTaskCompleted = {
-                        // Task completed successfully - navigate back to course list and refresh
                         pickingTasksViewModel.clearSelectedTask()
                         pickingTasksViewModel.refresh()
                         navController.popBackStack()

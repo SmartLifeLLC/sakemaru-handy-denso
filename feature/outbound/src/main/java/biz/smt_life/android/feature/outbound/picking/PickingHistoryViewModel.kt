@@ -150,6 +150,20 @@ class PickingHistoryViewModel @Inject constructor(
     }
 
     /**
+     * Select an item in the history list (for F3 delete).
+     */
+    fun selectItem(item: PickingTaskItem) {
+        _state.update { it.copy(selectedItem = item) }
+    }
+
+    /**
+     * Clear selection.
+     */
+    fun clearSelection() {
+        _state.update { it.copy(selectedItem = null) }
+    }
+
+    /**
      * Clear error message.
      */
     fun clearError() {

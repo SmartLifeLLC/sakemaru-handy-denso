@@ -1,0 +1,33 @@
+========================================
+[2026-02-19 P1: API テスト - 初回]
+----------------------------------------
+Endpoint: POST https://wms.lw-hana.net/api/auth/login
+Status: 401 (UNAUTHORIZED)
+Request:
+code=72&password=72
+
+Response:
+{"is_success":false,"code":"UNAUTHORIZED","result":{"data":null,"error_message":"Invalid credentials"}}
+
+原因/対応:
+旧テストユーザー(code=72, password=72)は無効。
+local.properties が code=1, password=1 に更新され、再テストで解決。
+========================================
+
+========================================
+[2026-02-19 P1: API テスト - 再テスト（成功）]
+----------------------------------------
+Endpoint: POST https://wms.lw-hana.net/api/auth/login
+Status: 200 (LOGIN_SUCCESS)
+Request:
+code=1&password=1
+
+Response (要約):
+picker: {id: 1, code: "1", name: "ピッカー1", default_warehouse_id: 91}
+
+Endpoint: GET https://wms.lw-hana.net/api/picking/tasks?warehouse_id=91&picker_id=1
+Status: 200 (SUCCESS)
+
+Response (要約):
+6コース取得。うち2コースにPICKINGアイテム有り（合計20アイテム）。
+========================================
