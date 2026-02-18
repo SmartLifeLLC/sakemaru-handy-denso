@@ -22,12 +22,46 @@ import javax.inject.Singleton
 @Singleton
 class FakeOutboundRepository @Inject constructor() : OutboundRepository {
 
+    private val slips = MutableStateFlow(createInitialSlips())
     private val pickingCourses = MutableStateFlow(createInitialPickingCourses())
     private val pendingEntries = MutableStateFlow<List<OutboundEntry>>(emptyList())
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
     companion object {
         private const val LATENCY_MS = 500L
+
+        private fun createInitialSlips() = listOf(
+            OutboundSlip(
+                id = "SLIP_001",
+                slipNumber = "SLIP-001",
+                customerName = "田中酒店",
+                outboundDate = "2025-10-20",
+                done = 1,
+                total = 3,
+                status = "in_progress",
+                items = emptyList()
+            ),
+            OutboundSlip(
+                id = "SLIP_002",
+                slipNumber = "SLIP-002",
+                customerName = "山本商店",
+                outboundDate = "2025-10-21",
+                done = 0,
+                total = 5,
+                status = "pending",
+                items = emptyList()
+            ),
+            OutboundSlip(
+                id = "SLIP_003",
+                slipNumber = "SLIP-003",
+                customerName = "鈴木物産",
+                outboundDate = "2025-10-22",
+                done = 5,
+                total = 5,
+                status = "completed",
+                items = emptyList()
+            )
+        )
 
         private fun createInitialPickingCourses() = listOf(
             PickingCourse(
@@ -52,6 +86,10 @@ class FakeOutboundRepository @Inject constructor() : OutboundRepository {
                 total = 3
             )
         )
+    }
+
+    override fun getSlips(): Flow<Result<List<OutboundSlip>>> {
+        return slips.map { Result.success(it) }
     }
 
     override fun getPickingCourses(): Flow<Result<List<PickingCourse>>> {

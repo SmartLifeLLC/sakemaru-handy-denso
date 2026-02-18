@@ -1,212 +1,223 @@
 package biz.smt_life.android.feature.outbound.picking
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import biz.smt_life.android.core.domain.model.PickingTask
 import biz.smt_life.android.core.domain.model.PickingTaskItem
 import biz.smt_life.android.core.domain.model.QuantityType
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
+// Design colors
+private val AmberBg = Color(0xFFFFFBEB)
+private val AmberBorder = Color(0xFFFDE68A)
+private val AmberText = Color(0xFF92400E)
+private val Amber100 = Color(0xFFFEF3C7)
+private val Amber600 = Color(0xFFD97706)
+private val Amber700 = Color(0xFFB45309)
+private val Neutral100 = Color(0xFFF5F5F4)
+private val Neutral200 = Color(0xFFE5E7EB)
+private val Neutral400 = Color(0xFFA1A1AA)
+private val Neutral500 = Color(0xFF6B7280)
+private val Neutral600 = Color(0xFF4B5563)
+private val Neutral900 = Color(0xFF171717)
+private val Emerald600 = Color(0xFF059669)
+private val Emerald700 = Color(0xFF047857)
+private val Red600 = Color(0xFFDC2626)
+private val Red700 = Color(0xFFB91C1C)
+private val Blue700 = Color(0xFF1D4ED8)
 
 /**
- * Picking History Screen (2.5.3 - 出庫処理＞履歴).
+ * Picking History Screen (P22 - 出庫処理＞履歴).
  *
- * Two modes:
- * - Editable mode: show PICKING items with delete (F3) and confirm-all (F4) buttons
- * - Read-only mode: all items COMPLETED/SHORTAGE, no action buttons
- *
- * @param taskId The picking task ID to show history for
- * @param onNavigateBack Navigate back to previous screen
- * @param onHistoryConfirmed Callback when user confirms all (navigate back to course list)
- * @param viewModel ViewModel for this screen
+ * Shows registered items with 受注/出荷 comparison in ケース/バラ format.
+ * Items are clickable to navigate to the edit screen.
+ * Color-coded: emerald for match, red for shortage, amber for excess.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PickingHistoryScreen(
     taskId: Int,
     onNavigateBack: () -> Unit,
+    onNavigateToEdit: (itemResultId: Int) -> Unit,
     onHistoryConfirmed: () -> Unit,
     viewModel: PickingHistoryViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Initialize viewModel with taskId - it will observe the repository flow
     LaunchedEffect(taskId) {
         viewModel.initialize(taskId)
     }
 
-    // Show error messages
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
-            snackbarHostState.showSnackbar(
-                message = it,
-                duration = SnackbarDuration.Short
-            )
+            snackbarHostState.showSnackbar(message = it, duration = SnackbarDuration.Short)
             viewModel.clearError()
         }
-    }
-
-    // Delete confirmation dialog
-    if (state.itemToDelete != null) {
-        DeleteConfirmationDialog(
-            item = state.itemToDelete!!,
-            onConfirm = {
-                viewModel.deleteHistoryItem(
-                    item = state.itemToDelete!!,
-                    onSuccess = onNavigateBack
-                )
-            },
-            onCancel = { viewModel.dismissDeleteDialog() }
-        )
     }
 
     // Confirm-all dialog
     if (state.showConfirmDialog) {
         ConfirmAllDialog(
+            pickingItemCount = state.pickingItemCount,
             isConfirming = state.isConfirming,
-            onConfirm = {
-                viewModel.confirmAll(onSuccess = onHistoryConfirmed)
-            },
+            onConfirm = { viewModel.confirmAll(onSuccess = onHistoryConfirmed) },
             onCancel = { viewModel.dismissConfirmDialog() }
         )
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("出庫履歴") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "戻る"
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        containerColor = Neutral100
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // Amber header
+            HistoryHeader()
+
+            // Content
+            Box(modifier = Modifier.weight(1f)) {
+                when {
+                    state.isLoading -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    state.task == null -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("タスクが見つかりません", color = Neutral500)
+                        }
+                    }
+                    state.historyItems.isEmpty() -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("履歴なし", fontSize = 11.sp, color = Neutral500)
+                        }
+                    }
+                    else -> {
+                        HistoryListContent(
+                            state = state,
+                            onItemClick = { item -> onNavigateToEdit(item.id) }
                         )
                     }
                 }
+            }
+
+            // Footer
+            HistoryFooter(
+                state = state,
+                onBackClick = onNavigateBack,
+                onConfirmClick = { viewModel.showConfirmDialog() },
+                onListClick = onNavigateBack
             )
-        },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        bottomBar = {
-            if (state.isEditableMode && state.historyItems.isNotEmpty()) {
-                HistoryBottomBar(
-                    onConfirmAllClick = { viewModel.showConfirmDialog() },
-                    canConfirm = state.canConfirmAll
-                )
-            }
-        }
-    ) { padding ->
-        when {
-            state.isLoading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-            state.historyItems.isEmpty() && state.isReadOnlyMode -> {
-                // Read-only mode with no PICKING items (all completed)
-                ReadOnlyModeContent(
-                    task = state.task!!,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            state.historyItems.isEmpty() -> {
-                // No history items at all
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "出庫履歴がありません",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            else -> {
-                HistoryListContent(
-                    state = state,
-                    onDeleteClick = { viewModel.showDeleteDialog(it) },
-                    modifier = Modifier.padding(padding)
-                )
-            }
         }
     }
 }
 
 @Composable
+private fun HistoryHeader() {
+    val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AmberBg)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text("出庫", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = AmberText)
+            Text(
+                text = today,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Amber700,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .background(Amber100, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            )
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(AmberBorder)
+    )
+}
+
+@Composable
 private fun HistoryListContent(
     state: PickingHistoryState,
-    onDeleteClick: (PickingTaskItem) -> Unit,
-    modifier: Modifier = Modifier
+    onItemClick: (PickingTaskItem) -> Unit
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // Header with course info
-        if (state.task != null) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = state.task.courseName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "フロア: ${state.task.pickingAreaName}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (state.isReadOnlyMode) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            Text(
-                                text = "確定済み（参照のみ）",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                }
-            }
+        // Header text
+        item {
+            Text(
+                text = "履歴（${state.historyItems.size}件）",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Neutral600,
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
         }
 
-        // List of history items
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(state.historyItems, key = { it.id }) { item ->
-                HistoryItemCard(
-                    item = item,
-                    onDeleteClick = { onDeleteClick(item) },
-                    showDeleteButton = state.isEditableMode && !state.isDeleting
-                )
-            }
+        items(state.historyItems, key = { it.id }) { item ->
+            HistoryItemCard(
+                item = item,
+                onClick = { onItemClick(item) }
+            )
         }
     }
 }
@@ -214,236 +225,252 @@ private fun HistoryListContent(
 @Composable
 private fun HistoryItemCard(
     item: PickingTaskItem,
-    onDeleteClick: () -> Unit,
-    showDeleteButton: Boolean,
-    modifier: Modifier = Modifier
+    onClick: () -> Unit
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    // Compute ケース/バラ for order
+    val orderCases: Int
+    val orderPieces: Int
+    when (item.plannedQtyType) {
+        QuantityType.CASE -> {
+            orderCases = item.plannedQty.toInt()
+            orderPieces = 0
+        }
+        QuantityType.PIECE -> {
+            val cf = item.capacityCase
+            if (cf != null && cf > 0) {
+                orderCases = (item.plannedQty / cf).toInt()
+                orderPieces = (item.plannedQty.toInt() % cf)
+            } else {
+                orderCases = 0
+                orderPieces = item.plannedQty.toInt()
+            }
+        }
+    }
+
+    // Compute ケース/バラ for shipped
+    val shippedCases: Int
+    val shippedPieces: Int
+    val cf = item.capacityCase
+    if (cf != null && cf > 0) {
+        shippedCases = (item.pickedQty / cf).toInt()
+        shippedPieces = (item.pickedQty.toInt() % cf)
+    } else {
+        shippedCases = 0
+        shippedPieces = item.pickedQty.toInt()
+    }
+
+    // Compare totals for color
+    val orderTotal = when (item.plannedQtyType) {
+        QuantityType.CASE -> item.plannedQty * (item.capacityCase ?: 1)
+        QuantityType.PIECE -> item.plannedQty
+    }
+    val shippedTotal = item.pickedQty
+    val shippedColor = when {
+        shippedTotal == orderTotal -> Emerald600
+        shippedTotal < orderTotal -> Red600
+        else -> Amber600
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White)
+            .border(1.dp, Neutral200, RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(6.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        // Row 1: Product name + chevron
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Item name
             Text(
                 text = item.itemName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
-
-            HorizontalDivider()
-
-            // Slip number
-            InfoRow(label = "伝票番号", value = item.slipNumber.toString())
-
-            // Volume and capacity (if available)
-            if (item.volume != null || item.capacityCase != null) {
-                val spec = buildString {
-                    if (item.volume != null) append(item.volume)
-                    if (item.capacityCase != null) {
-                        if (isNotEmpty()) append(" / ")
-                        append("入数: ${item.capacityCase}")
-                    }
-                }
-                InfoRow(label = "規格", value = spec)
-            }
-
-            // JAN code (if available)
-            if (item.janCode != null) {
-                InfoRow(label = "JAN", value = item.janCode!!)
-            }
-
-            // Get quantity type
-            val qtyLabel = when (item.plannedQtyType) {
-                QuantityType.CASE -> "ケース"
-                QuantityType.PIECE -> "バラ"
-            }
-
-            InfoRow(
-                label = "予定数量",
-                value = String.format("%.1f %s", item.plannedQty, qtyLabel)
-            )
-
-            InfoRow(
-                label = "出庫数量",
-                value = String.format("%.1f %s", item.pickedQty, qtyLabel)
-            )
-
-            // Status badge
-            StatusBadge(status = item.status)
-
-            // Delete button (only in editable mode)
-            if (showDeleteButton) {
-                Spacer(modifier = Modifier.height(4.dp))
-                OutlinedButton(
-                    onClick = onDeleteClick,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("削除(F3)")
-                }
-            }
+            Text("\u25B6", fontSize = 12.sp, color = Neutral400)
         }
-    }
-}
 
-@Composable
-private fun ReadOnlyModeContent(
-    task: PickingTask,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(24.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.CheckCircle,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "すべての商品が確定済みです",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = task.courseName,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "履歴は参照のみ可能です。変更はできません。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = "$label:",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-@Composable
-private fun StatusBadge(status: biz.smt_life.android.core.domain.model.ItemStatus) {
-    val (text, color) = when (status) {
-        biz.smt_life.android.core.domain.model.ItemStatus.PENDING -> "未登録" to MaterialTheme.colorScheme.error
-        biz.smt_life.android.core.domain.model.ItemStatus.PICKING -> "登録済み" to MaterialTheme.colorScheme.tertiary
-        biz.smt_life.android.core.domain.model.ItemStatus.COMPLETED -> "完了" to MaterialTheme.colorScheme.primary
-        biz.smt_life.android.core.domain.model.ItemStatus.SHORTAGE -> "欠品" to MaterialTheme.colorScheme.error
-    }
-
-    Surface(
-        color = color.copy(alpha = 0.15f),
-        shape = MaterialTheme.shapes.small
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = color,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-    }
-}
-
-@Composable
-private fun HistoryBottomBar(
-    onConfirmAllClick: () -> Unit,
-    canConfirm: Boolean,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        tonalElevation = 3.dp,
-        shadowElevation = 8.dp
-    ) {
+        // Row 2: Code + SKU info
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.Center
+            modifier = Modifier.padding(top = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
-                onClick = onConfirmAllClick,
-                enabled = canConfirm,
-                modifier = Modifier.widthIn(min = 200.dp)
-            ) {
-                Text("確定(F4)")
-            }
-        }
-    }
-}
-
-@Composable
-private fun DeleteConfirmationDialog(
-    item: PickingTaskItem,
-    onConfirm: () -> Unit,
-    onCancel: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text("削除確認") },
-        text = {
-            Column {
-                Text("以下の履歴を削除しますか？")
-                Spacer(modifier = Modifier.height(8.dp))
+            val janCode = item.janCode
+            if (janCode != null) {
                 Text(
-                    text = item.itemName,
-                    fontWeight = FontWeight.Bold
+                    text = janCode,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = Neutral500
                 )
             }
-        },
-        confirmButton = {
-            Button(onClick = onConfirm) {
-                Text("削除")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onCancel) {
-                Text("キャンセル")
+            val sku = listOfNotNull(
+                item.volume,
+                item.capacityCase?.let { "${it}本入" }
+            ).joinToString("/")
+            if (sku.isNotEmpty()) {
+                Text(text = sku, fontSize = 9.sp, color = Neutral400)
             }
         }
-    )
+
+        Spacer(Modifier.height(4.dp))
+
+        // 受注 row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "受注",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Neutral500
+            )
+            Text(
+                text = "${orderCases}ケース ${orderPieces}バラ",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                color = Neutral500
+            )
+        }
+
+        // 出荷 row (color-coded)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "出荷",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = shippedColor
+            )
+            Text(
+                text = "${shippedCases}ケース ${shippedPieces}バラ",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                color = shippedColor
+            )
+        }
+    }
+}
+
+@Composable
+private fun HistoryFooter(
+    state: PickingHistoryState,
+    onBackClick: () -> Unit,
+    onConfirmClick: () -> Unit,
+    onListClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Neutral900)
+            .padding(horizontal = 2.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        FooterButton(
+            label = "戻る",
+            keyHint = "F4",
+            backgroundColor = Neutral600,
+            keyColor = Color(0xFFD4D4D4),
+            onClick = onBackClick,
+            modifier = Modifier.weight(1f)
+        )
+        FooterButton(
+            label = "前へ",
+            keyHint = "F3",
+            backgroundColor = Red700,
+            keyColor = Color(0xFFFCA5A5),
+            enabled = false,
+            modifier = Modifier.weight(1f)
+        )
+        FooterButton(
+            label = if (state.isConfirming) "..." else "送信",
+            keyHint = "F1",
+            backgroundColor = Emerald700,
+            keyColor = Color(0xFF6EE7B7),
+            enabled = state.canConfirmAll,
+            onClick = onConfirmClick,
+            modifier = Modifier.weight(1f)
+        )
+        FooterButton(
+            label = "一覧",
+            keyHint = "F2",
+            backgroundColor = Blue700,
+            keyColor = Color(0xFF93C5FD),
+            onClick = onListClick,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun FooterButton(
+    label: String,
+    keyHint: String,
+    backgroundColor: Color,
+    keyColor: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(backgroundColor.copy(alpha = if (enabled) 1f else 0.4f))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(vertical = 4.dp)
+    ) {
+        Text(
+            text = keyHint,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            color = keyColor.copy(alpha = if (enabled) 1f else 0.4f)
+        )
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White.copy(alpha = if (enabled) 1f else 0.4f)
+        )
+    }
 }
 
 @Composable
 private fun ConfirmAllDialog(
+    pickingItemCount: Int,
     isConfirming: Boolean,
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = { if (!isConfirming) onCancel() },
-        title = { Text("確定確認") },
-        text = { Text("すべての出庫履歴を確定しますか？\n確定後は変更できません。") },
+        title = null,
+        text = {
+            Column {
+                Text("すべての登録商品を確定しますか？")
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "登録済み: ${pickingItemCount}件",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
         confirmButton = {
-            Button(
-                onClick = onConfirm,
-                enabled = !isConfirming
-            ) {
+            Button(onClick = onConfirm, enabled = !isConfirming) {
                 if (isConfirming) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
@@ -456,12 +483,7 @@ private fun ConfirmAllDialog(
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = onCancel,
-                enabled = !isConfirming
-            ) {
-                Text("キャンセル")
-            }
+            TextButton(onClick = onCancel, enabled = !isConfirming) { Text("キャンセル") }
         }
     )
 }

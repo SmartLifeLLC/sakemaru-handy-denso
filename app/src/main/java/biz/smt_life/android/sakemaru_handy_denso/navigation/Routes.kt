@@ -23,6 +23,9 @@ sealed class Routes(val route: String) {
     object PickingHistory : Routes("picking_history/{taskId}") { // 2.5.3 - 履歴
         fun createRoute(taskId: Int) = "picking_history/$taskId"
     }
+    object PickingEdit : Routes("picking_edit/{itemResultId}/{taskId}") { // 出庫検品 編集
+        fun createRoute(itemResultId: Int, taskId: Int) = "picking_edit/$itemResultId/$taskId"
+    }
 
     object SlipEntry : Routes("slip_entry")
 

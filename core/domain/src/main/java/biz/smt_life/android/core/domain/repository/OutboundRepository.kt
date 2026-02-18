@@ -10,6 +10,11 @@ import kotlinx.coroutines.flow.Flow
 
 interface OutboundRepository {
     /**
+     * Get all outbound slips for selection screen
+     */
+    fun getSlips(): Flow<Result<List<OutboundSlip>>>
+
+    /**
      * Get all picking courses (both my assignments and all courses)
      */
     fun getPickingCourses(): Flow<Result<List<PickingCourse>>>

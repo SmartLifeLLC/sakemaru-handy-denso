@@ -1,75 +1,91 @@
 package biz.smt_life.android.feature.outbound.picking
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import biz.smt_life.android.core.domain.model.PickingTask
+import biz.smt_life.android.core.domain.model.PickingTaskItem
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
-/**
- * Outbound Picking Screen (2.5.2 - 出庫データ入力).
- * Displays current picking item and allows quantity input.
- *
- * @param task The picking task to work with
- * @param onNavigateBack Navigate back to course list or previous screen
- * @param onNavigateToCourseList Navigate back to course list (コース(F6) button)
- * @param onNavigateToHistory Navigate to picking history (履歴(F7) button)
- * @param onNavigateToMain Navigate to main menu (ホーム(F8) button)
- * @param onTaskCompleted Callback when task is successfully completed (確定)
- * @param viewModel ViewModel for this screen
- */
+// Design colors
+private val AmberBg = Color(0xFFFFFBEB)
+private val AmberBorder = Color(0xFFFDE68A)
+private val AmberText = Color(0xFF92400E)
+private val Amber100 = Color(0xFFFEF3C7)
+private val Amber400 = Color(0xFFFBBF24)
+private val Amber600 = Color(0xFFD97706)
+private val Amber700 = Color(0xFFB45309)
+private val Amber900 = Color(0xFF78350F)
+private val OrangeBg = Color(0xFFFFF7ED)
+private val OrangeBorder = Color(0xFFFED7AA)
+private val Orange600 = Color(0xFFEA580C)
+private val Orange800 = Color(0xFF9A3412)
+private val BlueBg = Color(0xFFEFF6FF)
+private val BlueBorder = Color(0xFFBFDBFE)
+private val Blue600 = Color(0xFF2563EB)
+private val Blue800 = Color(0xFF1E40AF)
+private val Neutral100 = Color(0xFFF5F5F4)
+private val Neutral200 = Color(0xFFE5E7EB)
+private val Neutral300 = Color(0xFFD4D4D8)
+private val Neutral400 = Color(0xFFA1A1AA)
+private val Neutral500 = Color(0xFF6B7280)
+private val Neutral600 = Color(0xFF4B5563)
+private val Neutral700 = Color(0xFF374151)
+private val Neutral800 = Color(0xFF262626)
+private val Neutral900 = Color(0xFF171717)
+private val Purple700 = Color(0xFF7C3AED)
+private val Emerald700 = Color(0xFF047857)
+private val Blue700 = Color(0xFF1D4ED8)
+private val Red700 = Color(0xFFB91C1C)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OutboundPickingScreen(
     task: PickingTask,
     onNavigateBack: () -> Unit,
-    onNavigateToCourseList: () -> Unit,
     onNavigateToHistory: () -> Unit,
-    onNavigateToMain: () -> Unit,
     onTaskCompleted: () -> Unit,
     viewModel: OutboundPickingViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Initialize viewModel with task
     LaunchedEffect(task.taskId) {
         viewModel.initialize(task)
     }
 
-    // Show error messages
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
-            snackbarHostState.showSnackbar(
-                message = it,
-                duration = SnackbarDuration.Short
-            )
+            snackbarHostState.showSnackbar(message = it, duration = SnackbarDuration.Short)
             viewModel.clearError()
         }
     }
 
-    // Completion Dialog
     if (state.showCompletionDialog) {
         CompletionConfirmationDialog(
             isCompleting = state.isCompleting,
-            onConfirm = {
-                viewModel.completeTask(onSuccess = onTaskCompleted)
-            },
+            onConfirm = { viewModel.completeTask(onSuccess = onTaskCompleted) },
             onCancel = {
                 viewModel.dismissCompletionDialog()
                 onNavigateToHistory()
@@ -77,7 +93,6 @@ fun OutboundPickingScreen(
         )
     }
 
-    // Image Viewer Dialog
     if (state.showImageDialog && state.currentItem != null) {
         ImageViewerDialog(
             images = state.currentItem!!.images,
@@ -86,457 +101,419 @@ fun OutboundPickingScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("出庫データ入力") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "戻る(F4)"
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        containerColor = Neutral100
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // Amber header
+            DataInputHeader(state = state)
+
+            // Content
+            Box(modifier = Modifier.weight(1f)) {
+                when {
+                    state.isLoading -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    state.currentItem != null && state.originalTask != null -> {
+                        DataInputContent(
+                            state = state,
+                            onInputCasesChange = viewModel::onInputCasesChange,
+                            onInputPiecesChange = viewModel::onInputPiecesChange
                         )
                     }
-                },
-                actions = {
-                    IconButton(onClick = onNavigateToMain) {
-                        Icon(
-                            imageVector = Icons.Default.Home,
-                            contentDescription = "ホーム(F8)"
-                        )
+                    else -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("商品がありません")
+                        }
                     }
                 }
-            )
-        },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        bottomBar = {
-            OutboundPickingBottomBar(
+            }
+
+            // Footer
+            DataInputFooter(
                 state = state,
-                onPrevClick = viewModel::moveToPrevItem,
-                onNextClick = viewModel::moveToNextItem,
-                onRegisterClick = viewModel::registerCurrentItem,
+                onBackClick = onNavigateBack,
                 onImageClick = { viewModel.showImageDialog() },
-                onCourseClick = onNavigateToCourseList,
+                onRegisterClick = { viewModel.registerCurrentItem() },
                 onHistoryClick = onNavigateToHistory
             )
         }
-    ) { padding ->
-        when {
-            state.isLoading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-            state.currentItem != null && state.task != null -> {
-                OutboundPickingContent(
-                    state = state,
-                    onPickedQtyChange = viewModel::onPickedQtyChange,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            else -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("商品がありません")
-                }
-            }
-        }
     }
 }
 
 @Composable
-private fun OutboundPickingContent(
+private fun DataInputHeader(state: OutboundPickingState) {
+    val currentItem = state.currentItem
+    val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AmberBg)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text("出庫", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = AmberText)
+            Text(
+                text = today,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Amber700,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .background(Amber100, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            )
+        }
+
+        // Slip number
+        if (currentItem != null) {
+            Text(
+                text = String.format("%03d", currentItem.slipNumber),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = AmberText,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+    Box(Modifier.fillMaxWidth().height(1.dp).background(AmberBorder))
+}
+
+@Composable
+private fun DataInputContent(
     state: OutboundPickingState,
-    onPickedQtyChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    onInputCasesChange: (String) -> Unit,
+    onInputPiecesChange: (String) -> Unit
 ) {
     val currentItem = state.currentItem!!
-    val task = state.task!!
+    val originalTask = state.originalTask!!
 
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // Course Header (use counters from state, not filtered task)
-        CourseHeaderCard(
-            courseName = "${task.courseName}",
-            pickingAreaName = task.pickingAreaName,
-            registeredCount = state.registeredCount, // From originalTask, not filtered
-            totalCount = state.totalCount             // From originalTask, not filtered
-        )
-
-        // Item Information Card
-        ItemInformationCard(
-            itemName = currentItem.itemName,
-            slipNumber = currentItem.slipNumber.toString()
-        )
-
-        // Quantity Input Card
-        QuantityInputCard(
-            plannedQty = currentItem.plannedQty,
-            quantityType = state.quantityTypeLabel,
-            pickedQtyInput = state.pickedQtyInput,
-            onPickedQtyChange = onPickedQtyChange,
-            isUpdating = state.isUpdating,
-            formatQuantity = state::formatQuantity
-        )
-
-        // Product details card (容量, 入数, JAN)
-        ProductDetailsCard(currentItem)
-    }
-}
-
-@Composable
-private fun CourseHeaderCard(
-    courseName: String,
-    pickingAreaName: String,
-    registeredCount: Int,  // Changed from processedCount
-    totalCount: Int,
-    modifier: Modifier = Modifier
-) {
-    Card(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        // Course + Location row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // Course info
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .weight(1f)
+                    .background(BlueBg, RoundedCornerShape(4.dp))
+                    .border(1.dp, BlueBorder, RoundedCornerShape(4.dp))
+                    .padding(4.dp)
             ) {
                 Text(
-                    text = "コース",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "${state.currentIndex + 1}/${state.pendingItems.size}",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Blue600,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.align(Alignment.End)
                 )
-                Text(
-                    text = "$registeredCount / $totalCount",  // Use registeredCount
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🚚", fontSize = 12.sp)
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = originalTask.courseName,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Blue800,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
-            Text(
-                text = courseName,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = "フロア: $pickingAreaName",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            LinearProgressIndicator(
-                progress = { if (totalCount > 0) registeredCount.toFloat() / totalCount.toFloat() else 0f },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ItemInformationCard(
-    itemName: String,
-    slipNumber: String,
-    modifier: Modifier = Modifier
-) {
-    Card(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "商品",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = itemName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            HorizontalDivider()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+            // Location info
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .weight(1f)
+                    .background(OrangeBg, RoundedCornerShape(4.dp))
+                    .border(1.dp, OrangeBorder, RoundedCornerShape(4.dp))
+                    .padding(4.dp)
             ) {
+                Text("ロケ", fontSize = 9.sp, color = Orange600)
                 Text(
-                    text = "伝票番号",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = slipNumber,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
+                    text = "---",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Orange800,
+                    fontFamily = FontFamily.Monospace
                 )
             }
         }
-    }
-}
 
-@Composable
-private fun QuantityInputCard(
-    plannedQty: Double,
-    quantityType: String,
-    pickedQtyInput: String,
-    onPickedQtyChange: (String) -> Unit,
-    isUpdating: Boolean,
-    formatQuantity: (Double, String) -> String,
-    modifier: Modifier = Modifier
-) {
-    Card(modifier = modifier.fillMaxWidth()) {
+        // Product info card
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(AmberBg, RoundedCornerShape(8.dp))
+                .border(1.dp, AmberBorder, RoundedCornerShape(8.dp))
+                .padding(8.dp)
         ) {
+            // Item counter badge
             Text(
-                text = "数量",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                text = "商品 ${state.currentIndex + 1}/${state.pendingItems.size}",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = Amber600,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .background(Amber100, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
             )
+            Text(
+                text = currentItem.itemName,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Amber900,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (currentItem.janCode != null) {
+                Text(
+                    text = currentItem.janCode!!,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = Neutral800,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            val details = listOfNotNull(
+                currentItem.volume,
+                currentItem.capacityCase?.let { "${it}本入" },
+                currentItem.packaging
+            ).joinToString(" / ")
+            if (details.isNotEmpty()) {
+                Text(
+                    text = details,
+                    fontSize = 10.sp,
+                    color = Amber700,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
 
-            // Planned Quantity (Read-only)
-            OutlinedCard {
+        // Customer info (placeholder - API doesn't have customer field directly)
+        // Using course name as reference per the HTML design
+
+        // Quantity section: 受注数 / 出荷数
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(8.dp))
+                .border(1.dp, Neutral200, RoundedCornerShape(8.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // 受注数 (read-only)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "受注数",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Neutral500,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                // ケース
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(28.dp)
+                        .background(Neutral100, RoundedCornerShape(4.dp))
+                        .border(1.dp, Neutral300, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Text("ケース", fontSize = 9.sp, color = Neutral400)
                     Text(
-                        text = "出荷数量",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    Text(
-                        text = String.format("%.1f %s", plannedQty, quantityType),
-                        style = MaterialTheme.typography.headlineSmall,
+                        text = "${state.orderCases}",
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        fontFamily = FontFamily.Monospace,
+                        color = Neutral700
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                // バラ
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .background(Neutral100, RoundedCornerShape(4.dp))
+                        .border(1.dp, Neutral300, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("バラ", fontSize = 9.sp, color = Neutral400)
+                    Text(
+                        text = "${state.orderPieces}",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = Neutral700
                     )
                 }
             }
 
-            HorizontalDivider()
-
-            // Picked Quantity (Editable)
-            Text(
-                text = "出庫数量",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            OutlinedTextField(
-                value = pickedQtyInput,
-                onValueChange = onPickedQtyChange,
-                label = { Text("出庫数量 ($quantityType)") },
-                enabled = !isUpdating,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                supportingText = {
-                    Text("数量を入力してください。不足の場合は0を入力。")
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun ProductDetailsCard(
-    item: biz.smt_life.android.core.domain.model.PickingTaskItem,
-    modifier: Modifier = Modifier
-) {
-    Card(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "商品情報",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            HorizontalDivider()
-
-            // Volume (容量)
-            if (item.volume != null) {
-                InfoRow(label = "容量", value = item.volume!!)
-            } else {
-                InfoRow(label = "容量", value = "—")
-            }
-
-            // Capacity per case (入数)
-            if (item.capacityCase != null) {
-                InfoRow(label = "入数", value = "${item.capacityCase} 個/ケース")
-            } else {
-                InfoRow(label = "入数", value = "—")
-            }
-
-            // JAN code
-            if (item.janCode != null) {
-                InfoRow(label = "JAN", value = item.janCode!!)
-            } else {
-                InfoRow(label = "JAN", value = "—")
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = "$label:",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-@Composable
-private fun OutboundPickingBottomBar(
-    state: OutboundPickingState,
-    onPrevClick: () -> Unit,
-    onNextClick: () -> Unit,
-    onRegisterClick: () -> Unit,
-    onImageClick: () -> Unit,
-    onCourseClick: () -> Unit,
-    onHistoryClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        tonalElevation = 3.dp,
-        shadowElevation = 8.dp
-    ) {
-        val smallShape = RoundedCornerShape(6.dp)
-        val smallTextStyle = MaterialTheme.typography.labelSmall.copy(
-            fontSize = 11.sp,
-            lineHeight = 12.sp
-        )
-        val contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
-
-        Column(modifier = Modifier.padding(12.dp)) {
-            // Top row: Register, Prev, Next
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                val buttonModifier = Modifier
-                    .weight(1f)
-
-                // 登録(F1)
-                Button(
-                    onClick = onRegisterClick,
-                    enabled = state.canRegister,
-                    shape = smallShape,
-                    contentPadding = contentPadding,
-                    modifier = buttonModifier
-                ) {
-                    if (state.isUpdating) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    } else {
-                        Text("登録\n(F1)", style = smallTextStyle)
-                    }
-                }
-
-                // 前へ(F2)
-                OutlinedButton(
-                    onClick = onPrevClick,
-                    enabled = state.canMovePrev && !state.isUpdating,
-                    shape = smallShape,
-                    contentPadding = contentPadding,
-                    modifier = buttonModifier
-                ) {
-                    Text("前へ\n(F2)", style = smallTextStyle)
-                }
-
-                // 次へ(F3)
-                OutlinedButton(
-                    onClick = onNextClick,
-                    enabled = state.canMoveNext && !state.isUpdating,
-                    shape = smallShape,
-                    contentPadding = contentPadding,
-                    modifier = buttonModifier
-                ) {
-                    Text("次へ\n(F3)", style = smallTextStyle)
-                }
-
-                // 画像(F5) - Show image viewer if images are available
-                OutlinedButton(
-                    onClick = onImageClick,
-                    enabled = state.hasImages && !state.isUpdating,
-                    shape = smallShape,
-                    contentPadding = contentPadding,
-                    modifier = buttonModifier
-                ) {
-                    Text("画像\n(F5)", style = smallTextStyle)
-                }
-
-                // コース(F6)
-                OutlinedButton(
-                    onClick = onCourseClick,
-                    enabled = !state.isUpdating,
-                    shape = smallShape,
-                    contentPadding = contentPadding,
-                    modifier = buttonModifier
+            // 出荷数 (editable)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "出荷数",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Amber700,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                // ケース input
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .border(1.dp, Amber400, RoundedCornerShape(4.dp))
+                        .background(Color.White, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.CenterEnd
                 ) {
                     Text(
-                        "コース\n(F6)",
-                        style = smallTextStyle,
-                        textAlign = TextAlign.Center,
+                        text = "ケース",
+                        fontSize = 9.sp,
+                        color = Amber400,
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    )
+                    BasicTextField(
+                        value = state.inputCases,
+                        onValueChange = onInputCasesChange,
+                        enabled = !state.isUpdating,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 28.dp)
                     )
                 }
-
-                // 履歴(F7)
-                OutlinedButton(
-                    onClick = onHistoryClick,
-                    enabled = !state.isUpdating,
-                    shape = smallShape,
-                    contentPadding = contentPadding,
-                    modifier = buttonModifier
+                Spacer(Modifier.height(2.dp))
+                // バラ input
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .border(1.dp, Amber400, RoundedCornerShape(4.dp))
+                        .background(Color.White, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.CenterEnd
                 ) {
-                    Text("履歴\n(F7)", style = smallTextStyle)
+                    Text(
+                        text = "バラ",
+                        fontSize = 9.sp,
+                        color = Amber400,
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    )
+                    BasicTextField(
+                        value = state.inputPieces,
+                        onValueChange = onInputPiecesChange,
+                        enabled = !state.isUpdating,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 28.dp)
+                    )
                 }
             }
         }
     }
 }
 
-/**
- * Completion Confirmation Dialog (per spec 2.5.2).
- * Message: すべての商品登録を完了しました。確定しますか？
- * Buttons: 確定 (complete task) / キャンセル (navigate to history)
- */
+@Composable
+private fun DataInputFooter(
+    state: OutboundPickingState,
+    onBackClick: () -> Unit,
+    onImageClick: () -> Unit,
+    onRegisterClick: () -> Unit,
+    onHistoryClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Neutral900)
+            .padding(horizontal = 2.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        FooterButton("戻る", "F4", Neutral600, Color(0xFFD4D4D4), onClick = onBackClick, modifier = Modifier.weight(1f))
+        FooterButton("画像", "F3", Purple700, Color(0xFFC4B5FD), enabled = state.hasImages && !state.isUpdating, onClick = onImageClick, modifier = Modifier.weight(1f))
+        FooterButton(
+            label = if (state.isUpdating) "..." else "確定",
+            keyHint = "F1",
+            backgroundColor = Emerald700,
+            keyColor = Color(0xFF6EE7B7),
+            enabled = state.canRegister,
+            onClick = onRegisterClick,
+            modifier = Modifier.weight(1f)
+        )
+        FooterButton("履歴", "F2", Blue700, Color(0xFF93C5FD), enabled = !state.isUpdating, onClick = onHistoryClick, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun FooterButton(
+    label: String,
+    keyHint: String,
+    backgroundColor: Color,
+    keyColor: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(backgroundColor.copy(alpha = if (enabled) 1f else 0.4f))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(vertical = 4.dp)
+    ) {
+        Text(keyHint, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = keyColor.copy(alpha = if (enabled) 1f else 0.4f))
+        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = if (enabled) 1f else 0.4f))
+    }
+}
+
 @Composable
 private fun CompletionConfirmationDialog(
     isCompleting: Boolean,
@@ -545,88 +522,37 @@ private fun CompletionConfirmationDialog(
 ) {
     AlertDialog(
         onDismissRequest = { if (!isCompleting) onCancel() },
-        title = { Text("完了確認") },
-        text = { Text("すべての商品登録を完了しました。確定しますか？") },
+        title = null,
+        text = { Text("すべての商品を登録しました。\n出庫処理を確定しますか？") },
         confirmButton = {
-            Button(
-                onClick = onConfirm,
-                enabled = !isCompleting
-            ) {
+            Button(onClick = onConfirm, enabled = !isCompleting) {
                 if (isCompleting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                 } else {
                     Text("確定")
                 }
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = onCancel,
-                enabled = !isCompleting
-            ) {
-                Text("キャンセル")
-            }
+            TextButton(onClick = onCancel, enabled = !isCompleting) { Text("キャンセル") }
         }
     )
 }
 
-/**
- * Image Viewer Dialog (画像 F5).
- * Shows product images from the server in a simple dialog.
- * For now, displays the first image. Can be enhanced to show thumbnails/carousel.
- */
 @Composable
-private fun ImageViewerDialog(
-    images: List<String>,
-    onDismiss: () -> Unit
-) {
+private fun ImageViewerDialog(images: List<String>, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("商品画像") },
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (images.isEmpty()) {
-                    Text(
-                        text = "画像が登録されていません",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("画像が登録されていません", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    // Display first image
-                    // Note: In production, use Coil or Glide to load images from URL
-                    Text(
-                        text = "画像URL: ${images.first()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "画像の表示にはCoilまたはGlideの実装が必要です。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    // TODO: Implement image loading with Coil
-                    // AsyncImage(
-                    //     model = images.first(),
-                    //     contentDescription = "商品画像",
-                    //     modifier = Modifier
-                    //         .fillMaxWidth()
-                    //         .heightIn(max = 400.dp)
-                    // )
+                    Text("画像URL: ${images.first()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("閉じる")
-            }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } }
     )
 }

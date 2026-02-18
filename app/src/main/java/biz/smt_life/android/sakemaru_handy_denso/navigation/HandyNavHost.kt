@@ -29,9 +29,11 @@ import biz.smt_life.android.feature.inbound.incoming.ScheduleListScreen
 import biz.smt_life.android.feature.inbound.incoming.WarehouseSelectionScreen
 import biz.smt_life.android.feature.login.LoginScreen
 import biz.smt_life.android.feature.main.MainRoute
+import biz.smt_life.android.feature.outbound.slip.SlipSelectionRoute
 import biz.smt_life.android.feature.outbound.tasks.PickingTasksScreen
 import biz.smt_life.android.feature.outbound.tasks.PickingTasksViewModel
 import biz.smt_life.android.feature.outbound.picking.OutboundPickingScreen
+import biz.smt_life.android.feature.outbound.picking.EditPickingScreen
 import biz.smt_life.android.feature.outbound.picking.PickingHistoryScreen
 import biz.smt_life.android.feature.settings.SettingsScreen
 
@@ -296,22 +298,10 @@ fun HandyNavHost(
                         pickingTasksViewModel.clearSelectedTask()
                         navController.popBackStack()
                     },
-                    onNavigateToCourseList = {
-                        pickingTasksViewModel.clearSelectedTask()
-                        navController.popBackStack()
-                    },
                     onNavigateToHistory = {
-                        // Navigate to PickingHistory screen (2.5.3)
                         navController.navigate(Routes.PickingHistory.createRoute(taskId))
                     },
-                    onNavigateToMain = {
-                        pickingTasksViewModel.clearSelectedTask()
-                        navController.navigate(Routes.Main.route) {
-                            popUpTo(Routes.PickingList.route) { inclusive = true }
-                        }
-                    },
                     onTaskCompleted = {
-                        // Task completed successfully - navigate back to course list and refresh
                         pickingTasksViewModel.clearSelectedTask()
                         pickingTasksViewModel.refresh()
                         navController.popBackStack()
@@ -343,6 +333,9 @@ fun HandyNavHost(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
+                onNavigateToEdit = { itemResultId ->
+                    navController.navigate(Routes.PickingEdit.createRoute(itemResultId, taskId))
+                },
                 onHistoryConfirmed = {
                     // All items confirmed - navigate back to course list and refresh
                     pickingTasksViewModel.clearSelectedTask()
@@ -352,8 +345,48 @@ fun HandyNavHost(
             )
         }
 
+        // Picking Edit screen (出庫検品 編集)
+        composable(
+            route = Routes.PickingEdit.route,
+            arguments = listOf(
+                navArgument("itemResultId") { type = NavType.IntType },
+                navArgument("taskId") { type = NavType.IntType }
+            )
+        ) { backStackEntry ->
+            val itemResultId = backStackEntry.arguments?.getInt("itemResultId") ?: return@composable
+            val taskId = backStackEntry.arguments?.getInt("taskId") ?: return@composable
+
+            EditPickingScreen(
+                itemResultId = itemResultId,
+                taskId = taskId,
+                onNavigateBack = {
+                    // F4: back to course selection
+                    navController.popBackStack(Routes.PickingList.route, false)
+                },
+                onNavigateToHistory = {
+                    // F3: back to history
+                    navController.popBackStack()
+                },
+                onSaveSuccess = {
+                    // After save, go back to history
+                    navController.popBackStack()
+                }
+            )
+        }
+
         composable(Routes.SlipEntry.route) {
-            // TODO: Implement SlipEntryScreen (stub for now)
+            SlipSelectionRoute(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToMain = {
+                    navController.navigate(Routes.Main.route) {
+                        popUpTo(Routes.Main.route) { inclusive = false }
+                    }
+                },
+                onConfirm = {
+                    // 確定後は戻る（選択された伝票IDは将来的に次画面に渡す）
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }
