@@ -19,6 +19,7 @@ import biz.smt_life.android.core.network.fake.FakeOutboundCourseRepository
 import biz.smt_life.android.core.network.fake.FakeProfileRepository
 import biz.smt_life.android.core.network.interceptor.ApiKeyInterceptor
 import biz.smt_life.android.core.network.interceptor.AuthInterceptor
+import biz.smt_life.android.core.network.interceptor.BaseUrlInterceptor
 import biz.smt_life.android.core.network.repository.AuthRepositoryImpl
 import biz.smt_life.android.core.network.repository.IncomingRepositoryImpl
 import biz.smt_life.android.core.network.repository.PickingTaskRepositoryImpl
@@ -30,7 +31,6 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -76,11 +76,19 @@ object NetworkProviderModule {
 
     @Provides
     @Singleton
+    fun provideBaseUrlInterceptor(hostPreferences: HostPreferences): BaseUrlInterceptor {
+        return BaseUrlInterceptor(hostPreferences)
+    }
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(
+        baseUrlInterceptor: BaseUrlInterceptor,
         apiKeyInterceptor: ApiKeyInterceptor,
         authInterceptor: AuthInterceptor
     ): OkHttpClient {
         return OkHttpClient.Builder()
+            .addInterceptor(baseUrlInterceptor)
             .addInterceptor(apiKeyInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(HttpLoggingInterceptor().apply {
@@ -100,15 +108,12 @@ object NetworkProviderModule {
     @Singleton
     fun provideRetrofit(
         okHttpClient: OkHttpClient,
-        json: Json,
-        hostPreferences: HostPreferences
+        json: Json
     ): Retrofit {
-        // Note: Using runBlocking here is acceptable for DI setup
-        // In production, consider using a more sophisticated approach
-        val baseUrl = runBlocking { hostPreferences.getBaseUrlOnce() }
-
+        // Placeholder base URL - actual URL is dynamically set by BaseUrlInterceptor
+        // based on HostPreferences, so URL changes in Settings take effect immediately
         return Retrofit.Builder()
-            .baseUrl(baseUrl)
+            .baseUrl("http://localhost/")
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()

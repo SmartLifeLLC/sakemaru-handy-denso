@@ -50,7 +50,6 @@ class LoginViewModel @Inject constructor(
 
             authRepository.login(currentState.staffCode, currentState.password)
                 .onSuccess { authResult ->
-                    // Save all auth data including picker info
                     tokenManager.saveAuth(
                         token = authResult.token,
                         pickerId = authResult.pickerId,
