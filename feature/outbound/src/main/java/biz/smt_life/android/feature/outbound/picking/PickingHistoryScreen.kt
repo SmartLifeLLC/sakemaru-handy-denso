@@ -389,7 +389,7 @@ private fun HistoryFooter(
             modifier = Modifier.weight(1f)
         )
         FooterButton(
-            label = "前へ",
+            label = "--",
             keyHint = "F3",
             backgroundColor = Red700,
             keyColor = Color(0xFFFCA5A5),
@@ -397,7 +397,7 @@ private fun HistoryFooter(
             modifier = Modifier.weight(1f)
         )
         FooterButton(
-            label = if (state.isConfirming) "..." else "送信",
+            label = if (state.isConfirming) "..." else "確定",
             keyHint = "F1",
             backgroundColor = Emerald700,
             keyColor = Color(0xFF6EE7B7),
@@ -406,11 +406,11 @@ private fun HistoryFooter(
             modifier = Modifier.weight(1f)
         )
         FooterButton(
-            label = "一覧",
+            label = "--",
             keyHint = "F2",
             backgroundColor = Blue700,
             keyColor = Color(0xFF93C5FD),
-            onClick = onListClick,
+            enabled = false,
             modifier = Modifier.weight(1f)
         )
     }

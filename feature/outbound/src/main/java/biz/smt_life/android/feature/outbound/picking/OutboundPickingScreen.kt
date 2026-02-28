@@ -207,60 +207,32 @@ private fun DataInputContent(
             .padding(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // Course + Location row
+        // Course row: コース名 + 作業進行(X/Y)
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(BlueBg, RoundedCornerShape(4.dp))
+                .border(1.dp, BlueBorder, RoundedCornerShape(4.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Course info
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .weight(1f)
-                    .background(BlueBg, RoundedCornerShape(4.dp))
-                    .border(1.dp, BlueBorder, RoundedCornerShape(4.dp))
-                    .padding(4.dp)
-            ) {
-                Text(
-                    text = "${state.currentIndex + 1}/${state.pendingItems.size}",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Blue600,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.align(Alignment.End)
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🚚", fontSize = 12.sp)
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = originalTask.courseName,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Blue800,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            // Location info
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .weight(1f)
-                    .background(OrangeBg, RoundedCornerShape(4.dp))
-                    .border(1.dp, OrangeBorder, RoundedCornerShape(4.dp))
-                    .padding(4.dp)
-            ) {
-                Text("ロケ", fontSize = 9.sp, color = Orange600)
-                Text(
-                    text = "---",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Orange800,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
+            Text(
+                text = originalTask.courseName,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Blue800,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "${state.currentIndex + 1}/${state.pendingItems.size}",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Blue600,
+                fontFamily = FontFamily.Monospace
+            )
         }
 
         // Product info card
@@ -271,18 +243,6 @@ private fun DataInputContent(
                 .border(1.dp, AmberBorder, RoundedCornerShape(8.dp))
                 .padding(8.dp)
         ) {
-            // Item counter badge
-            Text(
-                text = "商品 ${state.currentIndex + 1}/${state.pendingItems.size}",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = Amber600,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .background(Amber100, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
-            )
             Text(
                 text = currentItem.itemName,
                 fontSize = 14.sp,
@@ -298,7 +258,7 @@ private fun DataInputContent(
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     color = Neutral800,
-                    modifier = Modifier.padding(top = 2.dp)
+                    modifier = Modifier.padding(top = 1.dp)
                 )
             }
             val details = listOfNotNull(
@@ -311,100 +271,63 @@ private fun DataInputContent(
                     text = details,
                     fontSize = 10.sp,
                     color = Amber700,
-                    modifier = Modifier.padding(top = 2.dp)
+                    modifier = Modifier.padding(top = 1.dp)
                 )
             }
+            // 得意先名
+            Text(
+                text = "得意先名：",
+                fontSize = 10.sp,
+                color = Amber700,
+                modifier = Modifier.padding(top = 1.dp)
+            )
         }
 
-        // Customer info (placeholder - API doesn't have customer field directly)
-        // Using course name as reference per the HTML design
-
-        // Quantity section: 受注数 / 出荷数
+        // Location info (moved here: between product info and quantity input)
         Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(OrangeBg, RoundedCornerShape(4.dp))
+                .border(1.dp, OrangeBorder, RoundedCornerShape(4.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("ロケーション", fontSize = 10.sp, color = Orange600)
+            Text(
+                text = "---",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Orange800,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        // Quantity input section (reference image layout)
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color.White, RoundedCornerShape(8.dp))
                 .border(1.dp, Neutral200, RoundedCornerShape(8.dp))
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 受注数 (read-only)
-            Column(modifier = Modifier.weight(1f)) {
+            // ケース input
+            Column {
                 Text(
-                    text = "受注数",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Neutral500,
-                    modifier = Modifier.padding(bottom = 2.dp)
+                    text = "ケース（受注数：${state.orderCases}）",
+                    fontSize = 12.sp,
+                    color = Neutral700,
+                    modifier = Modifier.padding(bottom = 4.dp)
                 )
-                // ケース
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(28.dp)
-                        .background(Neutral100, RoundedCornerShape(4.dp))
-                        .border(1.dp, Neutral300, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("ケース", fontSize = 9.sp, color = Neutral400)
-                    Text(
-                        text = "${state.orderCases}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Neutral700
-                    )
-                }
-                Spacer(Modifier.height(2.dp))
-                // バラ
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(28.dp)
-                        .background(Neutral100, RoundedCornerShape(4.dp))
-                        .border(1.dp, Neutral300, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("バラ", fontSize = 9.sp, color = Neutral400)
-                    Text(
-                        text = "${state.orderPieces}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Neutral700
-                    )
-                }
-            }
-
-            // 出荷数 (editable)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "出荷数",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Amber700,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
-                // ケース input
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(28.dp)
-                        .border(1.dp, Amber400, RoundedCornerShape(4.dp))
-                        .background(Color.White, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp),
-                    contentAlignment = Alignment.CenterEnd
+                        .height(40.dp)
+                        .border(1.dp, Neutral300, RoundedCornerShape(4.dp))
+                        .background(Color.White, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "ケース",
-                        fontSize = 9.sp,
-                        color = Amber400,
-                        modifier = Modifier.align(Alignment.CenterStart)
-                    )
                     BasicTextField(
                         value = state.inputCases,
                         onValueChange = onInputCasesChange,
@@ -412,33 +335,34 @@ private fun DataInputContent(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         textStyle = androidx.compose.ui.text.TextStyle(
-                            fontSize = 14.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 28.dp)
+                            .padding(horizontal = 8.dp)
                     )
                 }
-                Spacer(Modifier.height(2.dp))
-                // バラ input
+            }
+
+            // バラ input
+            Column {
+                Text(
+                    text = "バラ（受注数：${state.orderPieces}）",
+                    fontSize = 12.sp,
+                    color = Neutral700,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(28.dp)
-                        .border(1.dp, Amber400, RoundedCornerShape(4.dp))
-                        .background(Color.White, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp),
-                    contentAlignment = Alignment.CenterEnd
+                        .height(40.dp)
+                        .border(1.dp, Neutral300, RoundedCornerShape(4.dp))
+                        .background(Color.White, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "バラ",
-                        fontSize = 9.sp,
-                        color = Amber400,
-                        modifier = Modifier.align(Alignment.CenterStart)
-                    )
                     BasicTextField(
                         value = state.inputPieces,
                         onValueChange = onInputPiecesChange,
@@ -446,17 +370,18 @@ private fun DataInputContent(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         textStyle = androidx.compose.ui.text.TextStyle(
-                            fontSize = 14.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 28.dp)
+                            .padding(horizontal = 8.dp)
                     )
                 }
             }
+
         }
     }
 }
@@ -479,7 +404,7 @@ private fun DataInputFooter(
         FooterButton("戻る", "F4", Neutral600, Color(0xFFD4D4D4), onClick = onBackClick, modifier = Modifier.weight(1f))
         FooterButton("画像", "F3", Purple700, Color(0xFFC4B5FD), enabled = state.hasImages && !state.isUpdating, onClick = onImageClick, modifier = Modifier.weight(1f))
         FooterButton(
-            label = if (state.isUpdating) "..." else "確定",
+            label = if (state.isUpdating) "..." else "登録",
             keyHint = "F1",
             backgroundColor = Emerald700,
             keyColor = Color(0xFF6EE7B7),

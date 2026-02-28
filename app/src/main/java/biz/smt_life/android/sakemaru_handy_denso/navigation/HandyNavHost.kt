@@ -333,14 +333,16 @@ fun HandyNavHost(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onNavigateToEdit = { itemResultId ->
-                    navController.navigate(Routes.PickingEdit.createRoute(itemResultId, taskId))
+                onNavigateToEdit = { _ ->
+                    // Navigate to P21 (OutboundPicking) in edit mode instead of P23
+                    navController.navigate(Routes.OutboundPicking.createRoute(taskId))
                 },
                 onHistoryConfirmed = {
-                    // All items confirmed - navigate back to course list and refresh
+                    // All items confirmed - navigate back to P20 (course list) and refresh
+                    // The confirmed course will be removed from the list after refresh
                     pickingTasksViewModel.clearSelectedTask()
                     pickingTasksViewModel.refresh()
-                    navController.popBackStack()
+                    navController.popBackStack(Routes.PickingList.route, inclusive = false)
                 }
             )
         }

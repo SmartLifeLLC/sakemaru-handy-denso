@@ -8,23 +8,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -42,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,7 +55,6 @@ private val AmberText = Color(0xFF92400E)     // amber-800
 private val Amber600 = Color(0xFFD97706)      // amber-600
 private val Amber700 = Color(0xFFB45309)      // amber-700
 private val Amber100 = Color(0xFFFEF3C7)      // amber-100
-private val Amber500 = Color(0xFFF59E0B)      // amber-500
 private val EmeraldBg = Color(0xFFECFDF5)     // emerald-50
 private val EmeraldBorder = Color(0xFF6EE7B7) // emerald-300
 private val Emerald600 = Color(0xFF059669)    // emerald-600
@@ -356,8 +349,8 @@ private fun TaskListContent(
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             items(tasks, key = { it.taskId }) { task ->
                 CourseCard(
@@ -377,105 +370,40 @@ private fun CourseCard(
     enabled: Boolean = true
 ) {
     val isCompleted = task.isCompleted
-    val remainingCount = task.totalItems - task.registeredCount
 
     val cardBg = if (isCompleted) EmeraldBg else Color.White
     val cardBorder = if (isCompleted) EmeraldBorder else Neutral200
     val nameColor = if (isCompleted) Emerald800 else Color.Unspecified
 
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(1.dp, RoundedCornerShape(8.dp))
-            .clip(RoundedCornerShape(8.dp))
+            .heightIn(min = 56.dp)
+            .shadow(1.dp, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(8.dp))
+            .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
             .clickable(enabled = enabled) { onClick() }
-            .padding(6.dp)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Row 1: Icon + Course name + Badge
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                if (isCompleted) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "完了",
-                        tint = Emerald600,
-                        modifier = Modifier.size(16.dp)
-                    )
-                } else {
-                    // Truck icon placeholder - use text since we don't have the icon
-                    Text(
-                        text = "🚚",
-                        fontSize = 14.sp
-                    )
-                }
-                Text(
-                    text = task.courseName,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = nameColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+        Text(
+            text = task.courseName,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = nameColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
 
-            // Status badge
-            if (isCompleted) {
-                Text(
-                    text = "完了",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Emerald600,
-                    modifier = Modifier
-                        .background(Emerald100, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            } else {
-                Text(
-                    text = "残${remainingCount}件",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Amber700,
-                    modifier = Modifier
-                        .background(Amber100, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Row 2: Progress text + Progress bar
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = "検品: ${task.registeredCount}/${task.totalItems}",
-                fontSize = 9.sp,
-                color = Neutral500
-            )
-
-            if (!isCompleted && task.totalItems > 0) {
-                LinearProgressIndicator(
-                    progress = { task.registeredCount.toFloat() / task.totalItems.toFloat() },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                    color = Amber500,
-                    trackColor = Neutral200
-                )
-            }
-        }
+        // 検品(X/Y) progress display
+        Text(
+            text = "検品(${task.registeredCount}/${task.totalItems})",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (isCompleted) Emerald600 else Amber700
+        )
     }
 }
