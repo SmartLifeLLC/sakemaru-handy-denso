@@ -18,14 +18,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -33,8 +32,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -91,40 +88,19 @@ fun ProductListScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "${state.selectedWarehouse?.name ?: ""} 入庫処理",
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            )
-        },
-        bottomBar = {
-            FunctionKeyBar(
-                f1 = FunctionKey("検索") { searchFocusRequester.requestFocus() },
-                f2 = FunctionKey("戻る", onNavigateBack),
-                f3 = FunctionKey("履歴", onNavigateToHistory),
-                f4 = null
-            )
-        },
+        containerColor = IncomingNeutral100,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+        ) {
+            // Emerald header
+            IncomingHeader(subtitle = state.selectedWarehouse?.name)
+
+            Column(
+                modifier = Modifier.weight(1f)
                 .onKeyEvent { event ->
                     when (event.key) {
                         Key.F2 -> {
@@ -156,7 +132,7 @@ fun ProductListScreen(
                 focusRequester = searchFocusRequester,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 4.dp, vertical = 4.dp)
             )
 
             // Product list
@@ -214,6 +190,15 @@ fun ProductListScreen(
                 }
             }
         }
+
+            // Footer bar
+            FunctionKeyBar(
+                f4 = FunctionKey("戻る", onNavigateBack, IncomingNeutral600),
+                f3 = null,
+                f1 = FunctionKey("検索", { searchFocusRequester.requestFocus() }, Emerald700, Color(0xFF6EE7B7)),
+                f2 = FunctionKey("履歴", onNavigateToHistory, IncomingBlue700, Color(0xFF93C5FD))
+            )
+        }
     }
 }
 
@@ -229,7 +214,7 @@ private fun SearchBar(
         value = query,
         onValueChange = onQueryChange,
         modifier = modifier.focusRequester(focusRequester),
-        placeholder = { Text("JAN/商品コード/商品名") },
+        placeholder = { Text("JAN/商品コード/商品名", fontSize = 14.sp) },
         leadingIcon = {
             Icon(Icons.Default.Search, contentDescription = null)
         },
@@ -261,9 +246,9 @@ private fun ProductListItem(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         color = when {
-            isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-            isWorking -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
-            else -> MaterialTheme.colorScheme.surface
+            isSelected -> Emerald100.copy(alpha = 0.5f)
+            isWorking -> Emerald100.copy(alpha = 0.3f)
+            else -> Color.White
         }
     ) {
         Column(
@@ -298,7 +283,7 @@ private fun ProductListItem(
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Bold
                 ),
-                color = MaterialTheme.colorScheme.primary,
+                color = Emerald900,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -312,13 +297,13 @@ private fun ProductListItem(
                     QuantityBadge(
                         label = "残",
                         value = product.totalRemainingQuantity,
-                        color = MaterialTheme.colorScheme.tertiary
+                        color = Emerald700
                     )
                     if (product.totalReceivedQuantity > 0) {
                         QuantityBadge(
                             label = "済",
                             value = product.totalReceivedQuantity,
-                            color = MaterialTheme.colorScheme.primary
+                            color = Emerald600
                         )
                     }
                 }
@@ -330,7 +315,7 @@ private fun ProductListItem(
                 Text(
                     text = "作業中",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary
+                    color = Emerald600
                 )
             }
         }

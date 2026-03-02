@@ -27,6 +27,7 @@ class OutboundPickingViewModel @Inject constructor(
 
     fun initialize(task: PickingTask) {
         val warehouseId = tokenManager.getDefaultWarehouseId()
+        val pickerId = tokenManager.getPickerId() ?: 0
         val pendingItems = task.items.filter { it.status == ItemStatus.PENDING }
 
         if (pendingItems.isEmpty()) {
@@ -37,6 +38,7 @@ class OutboundPickingViewModel @Inject constructor(
                     currentIndex = 0,
                     isLoading = false,
                     warehouseId = warehouseId,
+                    pickerId = pickerId,
                     errorMessage = "登録可能な商品がありません"
                 )
             }
@@ -54,7 +56,8 @@ class OutboundPickingViewModel @Inject constructor(
                 inputCases = defaultCases.toString(),
                 inputPieces = defaultPieces.toString(),
                 isLoading = false,
-                warehouseId = warehouseId
+                warehouseId = warehouseId,
+                pickerId = pickerId
             )
         }
     }
@@ -136,8 +139,9 @@ class OutboundPickingViewModel @Inject constructor(
 
     private suspend fun refreshTaskFromServer(taskId: Int) {
         val warehouseId = _state.value.warehouseId
+        val pickerId = _state.value.pickerId
 
-        pickingTaskRepository.refreshTask(taskId, warehouseId)
+        pickingTaskRepository.refreshTask(taskId, warehouseId, pickerId)
             .onSuccess { refreshedTask ->
                 val newPendingItems = refreshedTask.items.filter { it.status == ItemStatus.PENDING }
 

@@ -37,6 +37,9 @@ class PickingTaskRepositoryImpl @Inject constructor(
     private val _tasksFlow = MutableStateFlow<List<PickingTask>>(emptyList())
     override val tasksFlow: StateFlow<List<PickingTask>> = _tasksFlow.asStateFlow()
 
+    // Track completed task IDs so they stay hidden even after server re-fetch
+    private val completedTaskIds = mutableSetOf<Int>()
+
     override fun taskFlow(taskId: Int): Flow<PickingTask?> {
         return tasksFlow.map { tasks ->
             tasks.find { it.taskId == taskId }
@@ -52,6 +55,7 @@ class PickingTaskRepositoryImpl @Inject constructor(
 
             if (response.isSuccess && response.result?.data != null) {
                 val tasks = response.result.data.map { it.toDomainModel() }
+                    .filter { it.taskId !in completedTaskIds }
                 // Update shared state flow
                 _tasksFlow.value = tasks
                 Result.success(tasks)
@@ -74,6 +78,7 @@ class PickingTaskRepositoryImpl @Inject constructor(
 
             if (response.isSuccess && response.result?.data != null) {
                 val tasks = response.result.data.map { it.toDomainModel() }
+                    .filter { it.taskId !in completedTaskIds }
                 // Update shared state flow
                 _tasksFlow.value = tasks
                 Result.success(tasks)
@@ -162,6 +167,10 @@ class PickingTaskRepositoryImpl @Inject constructor(
             )
 
             if (response.isSuccess) {
+                // Track completed task so it stays hidden even after server re-fetch
+                completedTaskIds.add(taskId)
+                // Remove the completed task from local cache immediately
+                _tasksFlow.value = _tasksFlow.value.filter { it.taskId != taskId }
                 Result.success(Unit)
             } else {
                 val errorMessage = extractErrorMessage(response.result, "タスクの完了に失敗しました")
@@ -176,7 +185,8 @@ class PickingTaskRepositoryImpl @Inject constructor(
     override suspend fun cancelPickingItem(
         resultId: Int,
         taskId: Int,
-        warehouseId: Int
+        warehouseId: Int,
+        pickerId: Int
     ): Result<Unit> {
         return try {
             val response = pickingApi.cancelPickingItem(
@@ -187,7 +197,7 @@ class PickingTaskRepositoryImpl @Inject constructor(
             if (response.isSuccess) {
                 // After successful cancel, refresh the task to update tasksFlow
                 // This ensures all observers (history, data input, course list) see the update
-                refreshTask(taskId, warehouseId)
+                refreshTask(taskId, warehouseId, pickerId)
                 Result.success(Unit)
             } else {
                 val errorMessage = extractErrorMessage(response.result, "出庫履歴のキャンセルに失敗しました")
@@ -199,16 +209,17 @@ class PickingTaskRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun refreshTask(taskId: Int, warehouseId: Int): Result<PickingTask> {
+    override suspend fun refreshTask(taskId: Int, warehouseId: Int, pickerId: Int): Result<PickingTask> {
         return try {
-            // Fetch all tasks for the warehouse and find the matching one
+            // Fetch tasks filtered by picker (same as getMyAreaTasks)
             val response = pickingApi.getPickingTasks(
                 warehouseId = warehouseId,
-                pickerId = null
+                pickerId = pickerId
             )
 
             if (response.isSuccess && response.result?.data != null) {
                 val tasks = response.result.data.map { it.toDomainModel() }
+                    .filter { it.taskId !in completedTaskIds }
 
                 // Update shared state flow with ALL tasks
                 _tasksFlow.value = tasks

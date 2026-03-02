@@ -18,7 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.LocationOn
@@ -43,8 +42,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +66,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -138,38 +136,7 @@ fun IncomingInputScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "${state.selectedWarehouse?.name ?: ""} 入庫処理",
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            )
-        },
-        bottomBar = {
-            FunctionKeyBar(
-                f1 = FunctionKey("賞味") { showDatePicker = true },
-                f2 = FunctionKey("戻る", onNavigateBack),
-                f3 = FunctionKey("登録") {
-                    if (viewModel.canSubmit()) {
-                        viewModel.submitEntry(onSubmitSuccess)
-                    }
-                },
-                f4 = null
-            )
-        },
+        containerColor = IncomingNeutral100,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
         if (schedule == null) {
@@ -207,45 +174,52 @@ fun IncomingInputScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .onKeyEvent { event ->
-                    when (event.key) {
-                        Key.F2 -> {
-                            onNavigateBack()
-                            true
-                        }
-                        Key.F3 -> {
-                            // F3 = 登録
-                            if (viewModel.canSubmit()) {
-                                viewModel.submitEntry(onSubmitSuccess)
-                            }
-                            true
-                        }
-                        Key.F1 -> {
-                            // F1 = 賞味期限カレンダー表示
-                            showDatePicker = true
-                            true
-                        }
-                        Key.DirectionDown, Key.Tab -> {
-                            // Move focus to next field
-                            if (currentFieldIndex < focusRequesters.size - 1) {
-                                currentFieldIndex++
-                                focusRequesters[currentFieldIndex].requestFocus()
-                            }
-                            true
-                        }
-                        Key.DirectionUp -> {
-                            // Move focus to previous field
-                            if (currentFieldIndex > 0) {
-                                currentFieldIndex--
-                                focusRequesters[currentFieldIndex].requestFocus()
-                            }
-                            true
-                        }
-                        else -> false
-                    }
-                }
         ) {
+            // Emerald header
+            IncomingHeader(subtitle = state.selectedWarehouse?.name)
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .onKeyEvent { event ->
+                        when (event.key) {
+                            Key.F2 -> {
+                                onNavigateBack()
+                                true
+                            }
+                            Key.F3 -> {
+                                // F3 = 登録
+                                if (viewModel.canSubmit()) {
+                                    viewModel.submitEntry(onSubmitSuccess)
+                                }
+                                true
+                            }
+                            Key.F1 -> {
+                                // F1 = 賞味期限カレンダー表示
+                                showDatePicker = true
+                                true
+                            }
+                            Key.DirectionDown, Key.Tab -> {
+                                // Move focus to next field
+                                if (currentFieldIndex < focusRequesters.size - 1) {
+                                    currentFieldIndex++
+                                    focusRequesters[currentFieldIndex].requestFocus()
+                                }
+                                true
+                            }
+                            Key.DirectionUp -> {
+                                // Move focus to previous field
+                                if (currentFieldIndex > 0) {
+                                    currentFieldIndex--
+                                    focusRequesters[currentFieldIndex].requestFocus()
+                                }
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+            ) {
             // Product info header
             ProductInfoHeader(
                 janCode = product?.primaryJanCode,
@@ -332,6 +306,19 @@ fun IncomingInputScreen(
                 )
             }
         }
+
+            // Footer bar
+            FunctionKeyBar(
+                f4 = FunctionKey("戻る", onNavigateBack, IncomingNeutral600),
+                f3 = FunctionKey("登録", {
+                    if (viewModel.canSubmit()) {
+                        viewModel.submitEntry(onSubmitSuccess)
+                    }
+                }, Emerald700, Color(0xFF6EE7B7)),
+                f1 = FunctionKey("賞味", { showDatePicker = true }, Emerald700, Color(0xFF6EE7B7)),
+                f2 = null
+            )
+        }
     }
 }
 
@@ -375,7 +362,7 @@ private fun ProductInfoHeader(
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Bold
             ),
-            color = MaterialTheme.colorScheme.primary,
+            color = Emerald900,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -386,7 +373,7 @@ private fun ProductInfoHeader(
 private fun ArrivalDateBar(arrivalDate: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.tertiaryContainer
+        color = Emerald100
     ) {
         Row(
             modifier = Modifier
@@ -398,7 +385,8 @@ private fun ArrivalDateBar(arrivalDate: String) {
                 text = "入荷日: $arrivalDate",
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Bold
-                )
+                ),
+                color = Emerald800
             )
         }
     }
@@ -424,7 +412,7 @@ private fun ExpirationDateField(
                 modifier = Modifier
                     .width(20.dp)
                     .height(20.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = Emerald700
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
@@ -481,7 +469,7 @@ private fun LocationInputField(
                 modifier = Modifier
                     .width(20.dp)
                     .height(20.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = Emerald700
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
@@ -580,7 +568,7 @@ private fun QuantityInputField(
                 modifier = Modifier
                     .width(20.dp)
                     .height(20.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = Emerald700
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(

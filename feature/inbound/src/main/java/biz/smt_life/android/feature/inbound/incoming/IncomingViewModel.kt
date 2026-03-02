@@ -246,7 +246,8 @@ class IncomingViewModel @Inject constructor(
         _state.update {
             it.copy(
                 selectedProduct = product,
-                selectedScheduleIndex = 0
+                selectedScheduleIndex = 0,
+                successMessage = null
             )
         }
     }

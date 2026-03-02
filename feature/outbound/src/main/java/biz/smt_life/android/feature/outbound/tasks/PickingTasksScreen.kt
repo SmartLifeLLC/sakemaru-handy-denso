@@ -388,19 +388,30 @@ private fun CourseCard(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = task.courseName,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = nameColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Column(
             modifier = Modifier.weight(1f)
-        )
+        ) {
+            Text(
+                text = task.courseName,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = nameColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = task.pickingAreaName,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Normal,
+                color = nameColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
 
-        // 検品(X/Y) progress display
+        // (X/Y) progress display
         Text(
-            text = "検品(${task.registeredCount}/${task.totalItems})",
+            text = "(${task.registeredCount}/${task.totalItems})",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = if (isCompleted) Emerald600 else Amber700

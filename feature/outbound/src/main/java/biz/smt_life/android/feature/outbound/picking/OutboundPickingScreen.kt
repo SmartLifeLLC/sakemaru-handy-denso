@@ -219,7 +219,8 @@ private fun DataInputContent(
         ) {
             Text(
                 text = originalTask.courseName,
-                fontSize = 16.sp,
+                fontSize = 14.sp,
+                lineHeight = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = Blue800,
                 maxLines = 1,
@@ -227,8 +228,9 @@ private fun DataInputContent(
                 modifier = Modifier.weight(1f)
             )
             Text(
-                text = "${state.currentIndex + 1}/${state.pendingItems.size}",
-                fontSize = 16.sp,
+                text = "${state.registeredCount}/${state.totalCount}",
+                fontSize = 14.sp,
+                lineHeight = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = Blue600,
                 fontFamily = FontFamily.Monospace
@@ -245,7 +247,8 @@ private fun DataInputContent(
         ) {
             Text(
                 text = currentItem.itemName,
-                fontSize = 14.sp,
+                fontSize = 16.sp,
+                lineHeight = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Amber900,
                 maxLines = 2,
@@ -254,11 +257,10 @@ private fun DataInputContent(
             if (currentItem.janCode != null) {
                 Text(
                     text = currentItem.janCode!!,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    color = Neutral800,
-                    modifier = Modifier.padding(top = 1.dp)
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                    lineHeight = 12.sp,
+                    color = Amber700
                 )
             }
             val details = listOfNotNull(
@@ -269,17 +271,17 @@ private fun DataInputContent(
             if (details.isNotEmpty()) {
                 Text(
                     text = details,
-                    fontSize = 10.sp,
-                    color = Amber700,
-                    modifier = Modifier.padding(top = 1.dp)
+                    fontSize = 12.sp,
+                    lineHeight = 12.sp,
+                    color = Amber700
                 )
             }
             // 得意先名
             Text(
                 text = "得意先名：",
-                fontSize = 10.sp,
-                color = Amber700,
-                modifier = Modifier.padding(top = 1.dp)
+                fontSize = 12.sp,
+                lineHeight = 12.sp,
+                color = Amber700
             )
         }
 

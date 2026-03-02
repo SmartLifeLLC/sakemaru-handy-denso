@@ -93,7 +93,8 @@ interface PickingTaskRepository {
     suspend fun cancelPickingItem(
         resultId: Int,
         taskId: Int,
-        warehouseId: Int
+        warehouseId: Int,
+        pickerId: Int
     ): Result<Unit>
 
     /**
@@ -103,7 +104,8 @@ interface PickingTaskRepository {
      *
      * @param taskId Picking Task ID (wave.wms_picking_task_id)
      * @param warehouseId Warehouse ID for filtering
+     * @param pickerId Picker ID for filtering (same filter as getMyAreaTasks)
      * @return Result containing the updated task or error
      */
-    suspend fun refreshTask(taskId: Int, warehouseId: Int): Result<PickingTask>
+    suspend fun refreshTask(taskId: Int, warehouseId: Int, pickerId: Int): Result<PickingTask>
 }

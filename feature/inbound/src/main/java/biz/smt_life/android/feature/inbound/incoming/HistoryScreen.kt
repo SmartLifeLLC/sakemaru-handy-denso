@@ -14,21 +14,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +34,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,7 +50,6 @@ import java.time.format.DateTimeFormatter
  * History Screen for Incoming feature.
  * Displays today's incoming work history.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     onNavigateBack: () -> Unit,
@@ -89,86 +82,67 @@ fun HistoryScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "${state.selectedWarehouse?.name ?: ""} 入庫処理",
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            )
-        },
-        bottomBar = {
-            FunctionKeyBar(
-                f1 = null,
-                f2 = FunctionKey("戻る", onNavigateBack),
-                f3 = FunctionKey("リスト", onNavigateToProductList),
-                f4 = null
-            )
-        },
+        containerColor = IncomingNeutral100,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .onKeyEvent { event ->
-                    when (event.key) {
-                        Key.F2 -> {
-                            onNavigateBack()
-                            true
-                        }
-                        Key.DirectionUp -> {
-                            viewModel.moveHistorySelectionUp()
-                            true
-                        }
-                        Key.DirectionDown -> {
-                            viewModel.moveHistorySelectionDown()
-                            true
-                        }
-                        Key.Enter -> {
-                            val items = state.historyItems
-                            val index = state.selectedHistoryIndex
-                            if (index >= 0 && index < items.size) {
-                                if (viewModel.selectHistoryItem(items[index])) {
-                                    onEditWorkItem()
-                                }
-                            }
-                            true
-                        }
-                        else -> false
-                    }
-                }
         ) {
-            // Header
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surfaceVariant
+            // Emerald header
+            IncomingHeader(subtitle = state.selectedWarehouse?.name)
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .onKeyEvent { event ->
+                        when (event.key) {
+                            Key.F2 -> {
+                                onNavigateBack()
+                                true
+                            }
+                            Key.DirectionUp -> {
+                                viewModel.moveHistorySelectionUp()
+                                true
+                            }
+                            Key.DirectionDown -> {
+                                viewModel.moveHistorySelectionDown()
+                                true
+                            }
+                            Key.Enter -> {
+                                val items = state.historyItems
+                                val index = state.selectedHistoryIndex
+                                if (index >= 0 && index < items.size) {
+                                    if (viewModel.selectHistoryItem(items[index])) {
+                                        onEditWorkItem()
+                                    }
+                                }
+                                true
+                            }
+                            else -> false
+                        }
+                    }
             ) {
-                Text(
-                    text = "本日の入庫履歴",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold
-                    ),
-                    modifier = Modifier.padding(8.dp)
-                )
-            }
+                // History sub-header
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Emerald100
+                ) {
+                    Text(
+                        text = "本日の入庫履歴",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Emerald800,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
 
-            HorizontalDivider()
+                HorizontalDivider()
 
-            // Content
-            when {
+                // Content
+                when {
                 state.isLoadingHistory -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -216,6 +190,15 @@ fun HistoryScreen(
                 }
             }
         }
+
+            // Footer bar
+            FunctionKeyBar(
+                f4 = FunctionKey("戻る", onNavigateBack, IncomingNeutral600),
+                f3 = FunctionKey("リスト", onNavigateToProductList, IncomingRed700, Color(0xFFFCA5A5)),
+                f1 = null,
+                f2 = null
+            )
+        }
     }
 }
 
@@ -233,9 +216,9 @@ private fun HistoryListItem(
             .fillMaxWidth()
             .clickable(enabled = canEdit, onClick = onClick),
         color = when {
-            isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-            !canEdit -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            else -> MaterialTheme.colorScheme.surface
+            isSelected -> Emerald100.copy(alpha = 0.5f)
+            !canEdit -> IncomingNeutral200.copy(alpha = 0.5f)
+            else -> Color.White
         }
     ) {
         Column(
@@ -270,7 +253,7 @@ private fun HistoryListItem(
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Bold
                 ),
-                color = MaterialTheme.colorScheme.primary,
+                color = Emerald900,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -316,7 +299,7 @@ private fun HistoryListItem(
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold
                     ),
-                    color = MaterialTheme.colorScheme.primary
+                    color = Emerald800
                 )
             }
         }
@@ -326,9 +309,9 @@ private fun HistoryListItem(
 @Composable
 private fun StatusBadge(status: IncomingWorkStatus) {
     val (text, color) = when (status) {
-        IncomingWorkStatus.WORKING -> "作業中" to MaterialTheme.colorScheme.tertiary
-        IncomingWorkStatus.COMPLETED -> "完了" to MaterialTheme.colorScheme.primary
-        IncomingWorkStatus.CANCELLED -> "キャンセル" to MaterialTheme.colorScheme.error
+        IncomingWorkStatus.WORKING -> "作業中" to Emerald600
+        IncomingWorkStatus.COMPLETED -> "完了" to Emerald700
+        IncomingWorkStatus.CANCELLED -> "キャンセル" to IncomingRed700
     }
 
     Surface(

@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -26,15 +25,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +42,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,34 +88,7 @@ fun ScheduleListScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "${state.selectedWarehouse?.name ?: ""} 入庫処理",
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            )
-        },
-        bottomBar = {
-            FunctionKeyBar(
-                f1 = null,
-                f2 = FunctionKey("戻る", onNavigateBack),
-                f3 = FunctionKey("履歴", onNavigateToHistory),
-                f4 = null
-            )
-        },
+        containerColor = IncomingNeutral100,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
         if (product == null) {
@@ -137,6 +107,12 @@ fun ScheduleListScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+        ) {
+            // Emerald header
+            IncomingHeader(subtitle = state.selectedWarehouse?.name)
+
+            Column(
+                modifier = Modifier.weight(1f)
                 .onKeyEvent { event ->
                     when (event.key) {
                         Key.F2 -> {
@@ -210,6 +186,15 @@ fun ScheduleListScreen(
                 }
             }
         }
+
+            // Footer bar
+            FunctionKeyBar(
+                f4 = FunctionKey("戻る", onNavigateBack, IncomingNeutral600),
+                f3 = FunctionKey("画像", {}, IncomingPurple700, Color(0xFFC4B5FD)),
+                f1 = null,
+                f2 = FunctionKey("履歴", onNavigateToHistory, IncomingBlue700, Color(0xFF93C5FD))
+            )
+        }
     }
 }
 
@@ -251,7 +236,7 @@ private fun ProductSummaryHeader(
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Bold
             ),
-            color = MaterialTheme.colorScheme.primary,
+            color = Emerald900,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -266,14 +251,14 @@ private fun ProductSummaryHeader(
                 Text(
                     text = "容量: ${product.fullVolume}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Emerald700
                 )
             }
             if (product.capacityCase != null) {
                 Text(
                     text = "入数: ${product.capacityCase}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Emerald700
                 )
             }
         }
@@ -287,7 +272,7 @@ private fun TotalQuantityBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.tertiaryContainer
+        color = Emerald100
     ) {
         Row(
             modifier = Modifier
@@ -298,13 +283,15 @@ private fun TotalQuantityBar(
         ) {
             Text(
                 text = "合計入荷予定数",
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                color = Emerald800
             )
             Text(
                 text = "$totalRemaining / $totalExpected",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold
-                )
+                ),
+                color = Emerald800
             )
         }
     }
@@ -324,9 +311,9 @@ private fun ScheduleListItem(
             .clickable(enabled = canWork, onClick = onClick)
             .background(
                 when {
-                    isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                    !canWork -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    else -> MaterialTheme.colorScheme.surface
+                    isSelected -> Emerald100.copy(alpha = 0.5f)
+                    !canWork -> IncomingNeutral200.copy(alpha = 0.5f)
+                    else -> Color.White
                 }
             )
             .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -406,10 +393,10 @@ private fun QuantityButton(
         onClick = onClick,
         enabled = enabled,
         colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = Emerald100,
+            contentColor = Emerald800,
+            disabledContainerColor = IncomingNeutral200,
+            disabledContentColor = IncomingNeutral500
         ),
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
     ) {
@@ -433,9 +420,9 @@ private fun QuantityButton(
 @Composable
 private fun StatusBadge(status: IncomingScheduleStatus) {
     val (text, color) = when (status) {
-        IncomingScheduleStatus.CONFIRMED -> "確定済" to MaterialTheme.colorScheme.primary
-        IncomingScheduleStatus.TRANSMITTED -> "連携済" to MaterialTheme.colorScheme.secondary
-        IncomingScheduleStatus.CANCELLED -> "キャンセル" to MaterialTheme.colorScheme.error
+        IncomingScheduleStatus.CONFIRMED -> "確定済" to Emerald700
+        IncomingScheduleStatus.TRANSMITTED -> "連携済" to IncomingBlue700
+        IncomingScheduleStatus.CANCELLED -> "キャンセル" to IncomingRed700
         else -> return
     }
 

@@ -20,7 +20,8 @@ data class OutboundPickingState(
     val showCompletionDialog: Boolean = false,
     val isCompleting: Boolean = false,
     val showImageDialog: Boolean = false,
-    val warehouseId: Int = 0
+    val warehouseId: Int = 0,
+    val pickerId: Int = 0
 ) {
     val currentItem: PickingTaskItem?
         get() = pendingItems.getOrNull(currentIndex)
