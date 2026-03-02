@@ -108,4 +108,9 @@ interface PickingTaskRepository {
      * @return Result containing the updated task or error
      */
     suspend fun refreshTask(taskId: Int, warehouseId: Int, pickerId: Int): Result<PickingTask>
+
+    /**
+     * Clear completed task tracking. Call on logout to reset state.
+     */
+    fun clearCompletedTasks()
 }

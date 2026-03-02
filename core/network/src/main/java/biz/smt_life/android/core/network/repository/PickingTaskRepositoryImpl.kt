@@ -1,5 +1,7 @@
 package biz.smt_life.android.core.network.repository
 
+import android.content.Context
+import android.content.SharedPreferences
 import biz.smt_life.android.core.domain.model.PickingTask
 import biz.smt_life.android.core.domain.model.PickingTaskItem
 import biz.smt_life.android.core.domain.model.QuantityType
@@ -10,6 +12,7 @@ import biz.smt_life.android.core.network.api.PickingApi
 import biz.smt_life.android.core.network.model.PickingTaskResponse
 import biz.smt_life.android.core.network.model.UpdatePickingRequest
 import biz.smt_life.android.core.network.model.UpdatePickingResponse
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,15 +33,29 @@ import javax.inject.Singleton
 @Singleton
 class PickingTaskRepositoryImpl @Inject constructor(
     private val pickingApi: PickingApi,
-    private val errorMapper: ErrorMapper
+    private val errorMapper: ErrorMapper,
+    @ApplicationContext private val context: Context
 ) : PickingTaskRepository {
 
     // Single source of truth for all picking tasks
     private val _tasksFlow = MutableStateFlow<List<PickingTask>>(emptyList())
     override val tasksFlow: StateFlow<List<PickingTask>> = _tasksFlow.asStateFlow()
 
-    // Track completed task IDs so they stay hidden even after server re-fetch
-    private val completedTaskIds = mutableSetOf<Int>()
+    // Track completed task IDs persistently so they stay hidden across app restarts
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("picking_completed_tasks", Context.MODE_PRIVATE)
+    private val completedTaskIds: MutableSet<Int> = loadCompletedTaskIds()
+
+    private fun loadCompletedTaskIds(): MutableSet<Int> {
+        val stored = prefs.getStringSet("completed_ids", emptySet()) ?: emptySet()
+        return stored.mapNotNull { it.toIntOrNull() }.toMutableSet()
+    }
+
+    private fun saveCompletedTaskIds() {
+        prefs.edit()
+            .putStringSet("completed_ids", completedTaskIds.map { it.toString() }.toSet())
+            .apply()
+    }
 
     override fun taskFlow(taskId: Int): Flow<PickingTask?> {
         return tasksFlow.map { tasks ->
@@ -167,8 +184,9 @@ class PickingTaskRepositoryImpl @Inject constructor(
             )
 
             if (response.isSuccess) {
-                // Track completed task so it stays hidden even after server re-fetch
+                // Track completed task persistently so it stays hidden across app restarts
                 completedTaskIds.add(taskId)
+                saveCompletedTaskIds()
                 // Remove the completed task from local cache immediately
                 _tasksFlow.value = _tasksFlow.value.filter { it.taskId != taskId }
                 Result.success(Unit)
@@ -250,6 +268,12 @@ class PickingTaskRepositoryImpl @Inject constructor(
             val mappedException = errorMapper.mapException(e)
             Result.failure(mappedException)
         }
+    }
+
+    override fun clearCompletedTasks() {
+        completedTaskIds.clear()
+        saveCompletedTaskIds()
+        _tasksFlow.value = emptyList()
     }
 
     /**
