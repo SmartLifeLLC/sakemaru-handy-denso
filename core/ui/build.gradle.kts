@@ -1,4 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+import java.io.FileInputStream
+import java.io.InputStreamReader
 
 plugins {
     alias(libs.plugins.android.library)
@@ -8,12 +11,25 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val deployConfig = Properties()
+val deployConfigFile = rootProject.file("deploy-config.properties")
+if (deployConfigFile.exists()) {
+    deployConfig.load(InputStreamReader(FileInputStream(deployConfigFile), Charsets.UTF_8))
+}
+
 android {
     namespace = "biz.smt_life.android.core.ui"
     compileSdk = 36
 
     defaultConfig {
         minSdk = 26
+
+        val defaultApiHost = deployConfig.getProperty("default.api.host") ?: ""
+        buildConfigField("String", "DEFAULT_API_HOST", "\"$defaultApiHost\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {

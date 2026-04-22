@@ -1,4 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+import java.io.FileInputStream
+import java.io.InputStreamReader
 
 plugins {
     alias(libs.plugins.android.library)
@@ -8,6 +11,12 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val deployConfig = Properties()
+val deployConfigFile = rootProject.file("deploy-config.properties")
+if (deployConfigFile.exists()) {
+    deployConfig.load(InputStreamReader(FileInputStream(deployConfigFile), Charsets.UTF_8))
+}
+
 android {
     namespace = "biz.smt_life.android.feature.settings"
     compileSdk = 36
@@ -15,6 +24,12 @@ android {
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val presetUrls = deployConfig.getProperty("preset.urls")
+            ?: "https://wms.lw-hana.net,https://wms.sakemaru.click,http://10.0.2.2:8000"
+        val customerName = deployConfig.getProperty("customer.name") ?: ""
+        buildConfigField("String", "PRESET_URLS", "\"$presetUrls\"")
+        buildConfigField("String", "CUSTOMER_NAME", "\"$customerName\"")
     }
 
     compileOptions {
@@ -30,6 +45,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

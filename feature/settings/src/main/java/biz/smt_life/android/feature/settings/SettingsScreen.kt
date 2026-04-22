@@ -81,12 +81,33 @@ fun SettingsScreen(
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
+            if (state.presetUrls.isNotEmpty()) {
+                Text(
+                    text = "プリセットから選択",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                state.presetUrls.forEach { url ->
+                    OutlinedButton(
+                        onClick = {
+                            SoundUtils.playBeep()
+                            viewModel.onHostUrlChange(if (url.endsWith("/")) url else "$url/")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp)
+                    ) {
+                        Text(url, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             HandyTextField(
                 value = state.hostUrl,
                 onValueChange = viewModel::onHostUrlChange,
                 label = "ホストURL",
                 enabled = !state.isLoading,
-//                placeholder = "https://example.com",
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(
                     onDone = {

@@ -10,6 +10,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import biz.smt_life.android.core.ui.BuildConfig
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,6 +43,10 @@ class HostPreferences @Inject constructor(
 
     companion object {
         private val BASE_URL_KEY = stringPreferencesKey("base_url")
-        const val DEFAULT_BASE_URL = "https://wms.lw-hana.net/"
+        val DEFAULT_BASE_URL: String = if (BuildConfig.DEFAULT_API_HOST.isNotEmpty()) {
+            "https://${BuildConfig.DEFAULT_API_HOST}/"
+        } else {
+            "https://wms.lw-hana.net/"
+        }
     }
 }
