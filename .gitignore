@@ -11,3 +11,4 @@ local.properties
 /docs
 /.claude
 *.md
+!VERSION.md
