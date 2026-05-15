@@ -233,6 +233,50 @@
 
 ---
 
+### 2-2. GET `/api/master/item-locations` -- 商品別ロケーション検索
+
+| 項目 | 内容 |
+|---|---|
+| **Summary** | 商品別ロケーション検索 |
+| **Description** | 商品CD、商品名、JAN/検索コード、社内JANから商品を検索し、指定倉庫内の商品基本情報、在庫状況、ロケーション情報を返します。 |
+| **認証** | `apiKey` + `sanctum`（Bearer トークン必須） |
+
+#### クエリパラメータ
+
+| パラメータ名 | 型 | 必須/任意 | 説明 | 例 |
+|---|---|---|---|---|
+| `warehouse_id` | integer | **必須** | 選択中の倉庫ID。この倉庫のみの在庫・ロケを返す | `91` |
+| `search` | string | **必須** | 商品CD、商品名、JAN、社内JAN | `4901234567890` |
+| `limit` | integer | 任意 | 商品の最大取得件数。デフォルト10、最大50 | `10` |
+
+#### 検索対象
+
+- `items.code`
+- `items.name`
+- `item_search_information.search_string`
+- `item_quantity_information.product_code`
+- `item_quantity_information.own_code`
+- 各コードの13桁ゼロ埋め一致
+
+#### レスポンス
+
+`result.data[]` は `item`, `warehouse`, `stock`, `locations` を持つ商品別ロケ検索結果です。
+詳細は `prompts/location-search/api-spec.md` を参照してください。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `result.data[].item` | object | 商品基本情報、JAN、社内JAN。単価・税・原価・標準売価は含まない |
+| `result.data[].warehouse` | object | 指定倉庫情報 |
+| `result.data[].stock.status` | string | `IN_STOCK` / `RESERVED_ONLY` / `NO_STOCK` |
+| `result.data[].stock.current_quantity` | integer | 指定倉庫の現在庫数 |
+| `result.data[].stock.reserved_quantity` | integer | 指定倉庫の引当済数 |
+| `result.data[].stock.available_quantity` | integer | 指定倉庫の引当可能数 |
+| `result.data[].locations.suggested` | object|null | 推奨ロケ。商品デフォルト、在庫ロケ、倉庫デフォルトの順 |
+| `result.data[].locations.default` | object|null | 商品×倉庫のデフォルトロケ |
+| `result.data[].locations.stock` | object[] | 指定倉庫で在庫ロットがあるロケ一覧 |
+
+---
+
 ## 3. Incoming（入荷作業関連）
 
 ### 3-1. GET `/api/incoming/schedules` -- 入庫予定一覧取得
@@ -905,6 +949,7 @@
 | 1-2 | POST | `/api/auth/logout` | ログアウト | Authentication |
 | 1-3 | GET | `/api/me` | 現在のピッカー情報取得 | Authentication |
 | 2-1 | GET | `/api/master/warehouses` | 倉庫マスタ一覧取得 | Master Data |
+| 2-2 | GET | `/api/master/item-locations` | 商品別ロケーション検索 | Master Data |
 | 3-1 | GET | `/api/incoming/schedules` | 入庫予定一覧取得 | Incoming |
 | 3-2 | GET | `/api/incoming/schedules/{id}` | 入庫予定詳細取得 | Incoming |
 | 3-3 | GET | `/api/incoming/work-items` | 作業データ一覧取得 | Incoming |
