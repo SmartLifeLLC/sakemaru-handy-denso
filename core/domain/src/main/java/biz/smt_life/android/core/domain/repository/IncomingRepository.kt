@@ -4,6 +4,7 @@ import biz.smt_life.android.core.domain.model.IncomingProduct
 import biz.smt_life.android.core.domain.model.IncomingSchedule
 import biz.smt_life.android.core.domain.model.IncomingWarehouse
 import biz.smt_life.android.core.domain.model.IncomingWorkItem
+import biz.smt_life.android.core.domain.model.ItemLocationSearchResult
 import biz.smt_life.android.core.domain.model.Location
 import biz.smt_life.android.core.domain.model.StartWorkData
 import biz.smt_life.android.core.domain.model.UpdateWorkItemData
@@ -138,4 +139,18 @@ interface IncomingRepository {
         search: String? = null,
         limit: Int? = null
     ): Result<List<Location>>
+
+    /**
+     * Search items and their stock locations in the selected warehouse.
+     *
+     * @param warehouseId Required warehouse ID
+     * @param search Product code, product name, JAN, product_code, or own_code
+     * @param limit Optional limit on number of matching items
+     * @return Result containing item location search results or error
+     */
+    suspend fun searchItemLocations(
+        warehouseId: Int,
+        search: String,
+        limit: Int? = 10
+    ): Result<List<ItemLocationSearchResult>>
 }

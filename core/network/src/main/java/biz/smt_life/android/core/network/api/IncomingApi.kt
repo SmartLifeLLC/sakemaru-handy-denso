@@ -3,6 +3,7 @@ package biz.smt_life.android.core.network.api
 import biz.smt_life.android.core.network.model.ApiEnvelope
 import biz.smt_life.android.core.network.model.IncomingProductResponse
 import biz.smt_life.android.core.network.model.IncomingWorkItemResponse
+import biz.smt_life.android.core.network.model.ItemLocationSearchResponse
 import biz.smt_life.android.core.network.model.LocationResponse
 import biz.smt_life.android.core.network.model.StartWorkRequest
 import biz.smt_life.android.core.network.model.UpdateWorkItemRequest
@@ -153,4 +154,15 @@ interface IncomingApi {
         @Query("search") search: String? = null,
         @Query("limit") limit: Int? = null
     ): ApiEnvelope<List<LocationResponse>>
+
+    /**
+     * GET /api/master/item-locations
+     * Search item stock and locations in the selected warehouse.
+     */
+    @GET("/api/master/item-locations")
+    suspend fun searchItemLocations(
+        @Query("warehouse_id") warehouseId: Int,
+        @Query("search") search: String,
+        @Query("limit") limit: Int? = null
+    ): ApiEnvelope<List<ItemLocationSearchResponse>>
 }

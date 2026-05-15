@@ -27,6 +27,7 @@ import biz.smt_life.android.feature.inbound.incoming.IncomingViewModel
 import biz.smt_life.android.feature.inbound.incoming.ProductListScreen
 import biz.smt_life.android.feature.inbound.incoming.ScheduleListScreen
 import biz.smt_life.android.feature.inbound.incoming.WarehouseSelectionScreen
+import biz.smt_life.android.feature.inbound.locationsearch.LocationSearchScreen
 import biz.smt_life.android.feature.login.LoginScreen
 import biz.smt_life.android.feature.main.MainRoute
 import biz.smt_life.android.feature.outbound.tasks.PickingTasksScreen
@@ -342,6 +343,14 @@ fun HandyNavHost(
 
         composable(Routes.SlipEntry.route) {
             // TODO: Implement SlipEntryScreen (stub for now)
+        }
+
+        composable(Routes.LocationSearch.route) {
+            LocationSearchScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }
