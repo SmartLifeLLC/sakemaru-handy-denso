@@ -8,8 +8,18 @@ import biz.smt_life.android.core.domain.model.IncomingWarehouse
 import biz.smt_life.android.core.domain.model.IncomingWarehouseSummary
 import biz.smt_life.android.core.domain.model.IncomingWorkItem
 import biz.smt_life.android.core.domain.model.IncomingWorkStatus
+import biz.smt_life.android.core.domain.model.ItemLocation
+import biz.smt_life.android.core.domain.model.ItemLocationSearchResult
+import biz.smt_life.android.core.domain.model.ItemQuantityCode
+import biz.smt_life.android.core.domain.model.ItemSearchCode
 import biz.smt_life.android.core.domain.model.Location
+import biz.smt_life.android.core.domain.model.LocationSearchItem
+import biz.smt_life.android.core.domain.model.LocationSearchLocations
+import biz.smt_life.android.core.domain.model.LocationSearchStock
+import biz.smt_life.android.core.domain.model.LocationSearchWarehouse
 import biz.smt_life.android.core.domain.model.StartWorkData
+import biz.smt_life.android.core.domain.model.StockLocation
+import biz.smt_life.android.core.domain.model.StockStatus
 import biz.smt_life.android.core.domain.model.UpdateWorkItemData
 import biz.smt_life.android.core.domain.model.WorkItemSchedule
 import biz.smt_life.android.core.domain.repository.IncomingRepository
@@ -20,8 +30,17 @@ import biz.smt_life.android.core.network.model.ApiEnvelope
 import biz.smt_life.android.core.network.model.IncomingProductResponse
 import biz.smt_life.android.core.network.model.IncomingScheduleResponse
 import biz.smt_life.android.core.network.model.IncomingWorkItemResponse
+import biz.smt_life.android.core.network.model.ItemLocationResponse
+import biz.smt_life.android.core.network.model.ItemLocationSearchResponse
+import biz.smt_life.android.core.network.model.ItemQuantityCodeResponse
+import biz.smt_life.android.core.network.model.ItemSearchCodeResponse
 import biz.smt_life.android.core.network.model.LocationResponse
+import biz.smt_life.android.core.network.model.LocationSearchItemResponse
+import biz.smt_life.android.core.network.model.LocationSearchLocationsResponse
+import biz.smt_life.android.core.network.model.LocationSearchStockResponse
+import biz.smt_life.android.core.network.model.LocationSearchWarehouseResponse
 import biz.smt_life.android.core.network.model.StartWorkRequest
+import biz.smt_life.android.core.network.model.StockLocationResponse
 import biz.smt_life.android.core.network.model.UpdateWorkItemRequest
 import biz.smt_life.android.core.network.model.WarehouseResponse
 import biz.smt_life.android.core.network.model.WorkItemScheduleResponse
@@ -275,6 +294,31 @@ class IncomingRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun searchItemLocations(
+        warehouseId: Int,
+        search: String,
+        limit: Int?
+    ): Result<List<ItemLocationSearchResult>> {
+        return try {
+            val response = incomingApi.searchItemLocations(
+                warehouseId = warehouseId,
+                search = search,
+                limit = limit
+            )
+
+            if (response.isSuccess && response.result?.data != null) {
+                val results = response.result.data.map { it.toDomainModel() }
+                Result.success(results)
+            } else {
+                val errorMessage = extractErrorMessage(response.result, "ロケ検索に失敗しました")
+                Result.failure(Exception(errorMessage))
+            }
+        } catch (e: Exception) {
+            val mappedException = errorMapper.mapException(e)
+            Result.failure(mappedException)
+        }
+    }
+
     // ============================================================
     // Helper Functions
     // ============================================================
@@ -406,6 +450,113 @@ class IncomingRepositoryImpl @Inject constructor(
             quantityType = IncomingQuantityType.fromString(quantityType),
             expectedArrivalDate = expectedArrivalDate,
             status = IncomingScheduleStatus.fromString(status)
+        )
+    }
+
+    private fun ItemLocationSearchResponse.toDomainModel(): ItemLocationSearchResult {
+        return ItemLocationSearchResult(
+            item = item.toDomainModel(),
+            warehouse = warehouse.toDomainModel(),
+            stock = stock.toDomainModel(),
+            locations = locations.toDomainModel()
+        )
+    }
+
+    private fun LocationSearchItemResponse.toDomainModel(): LocationSearchItem {
+        return LocationSearchItem(
+            id = id,
+            code = code,
+            name = name,
+            kana = kana,
+            volume = volume,
+            volumeUnit = volumeUnit,
+            capacityCase = capacityCase,
+            capacityCarton = capacityCarton,
+            packaging = packaging,
+            temperatureType = temperatureType,
+            usesExpirationDate = usesExpirationDate,
+            images = images,
+            searchCodes = searchCodes.map { it.toDomainModel() },
+            janCodes = janCodes,
+            itemQuantityCodes = itemQuantityCodes.map { it.toDomainModel() }
+        )
+    }
+
+    private fun ItemSearchCodeResponse.toDomainModel(): ItemSearchCode {
+        return ItemSearchCode(
+            code = code,
+            codeType = codeType,
+            quantityType = quantityType,
+            priority = priority
+        )
+    }
+
+    private fun ItemQuantityCodeResponse.toDomainModel(): ItemQuantityCode {
+        return ItemQuantityCode(
+            productCode = productCode,
+            ownCode = ownCode,
+            quantityCode = quantityCode,
+            quantity = quantity,
+            canOrder = canOrder
+        )
+    }
+
+    private fun LocationSearchWarehouseResponse.toDomainModel(): LocationSearchWarehouse {
+        return LocationSearchWarehouse(
+            id = id,
+            code = code,
+            name = name,
+            kanaName = kanaName
+        )
+    }
+
+    private fun LocationSearchStockResponse.toDomainModel(): LocationSearchStock {
+        return LocationSearchStock(
+            status = StockStatus.fromString(status),
+            hasStock = hasStock,
+            lotCount = lotCount,
+            locationCount = locationCount,
+            currentQuantity = currentQuantity,
+            reservedQuantity = reservedQuantity,
+            availableQuantity = availableQuantity,
+            earliestExpirationDate = earliestExpirationDate,
+            latestExpirationDate = latestExpirationDate
+        )
+    }
+
+    private fun LocationSearchLocationsResponse.toDomainModel(): LocationSearchLocations {
+        return LocationSearchLocations(
+            suggested = suggested?.toDomainModel(),
+            defaultLocation = defaultLocation?.toDomainModel(),
+            stock = stock.map { it.toDomainModel() }
+        )
+    }
+
+    private fun ItemLocationResponse.toDomainModel(): ItemLocation {
+        return ItemLocation(
+            id = id,
+            warehouseId = warehouseId,
+            floorId = floorId,
+            code = code,
+            displayName = displayName.ifBlank { code },
+            name = name,
+            source = source
+        )
+    }
+
+    private fun StockLocationResponse.toDomainModel(): StockLocation {
+        return StockLocation(
+            id = id,
+            warehouseId = warehouseId,
+            floorId = floorId,
+            code = code,
+            displayName = displayName.ifBlank { code },
+            name = name,
+            source = source,
+            lotCount = lotCount,
+            currentQuantity = currentQuantity,
+            reservedQuantity = reservedQuantity,
+            availableQuantity = availableQuantity
         )
     }
 }

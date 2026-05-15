@@ -139,3 +139,105 @@ data class UpdateWorkItemRequest(
     @SerialName("work_expiration_date") val workExpirationDate: String? = null,
     @SerialName("location_id") val locationId: Int? = null
 )
+
+// ============================================================
+// Item Location Search Models
+// ============================================================
+
+@Serializable
+data class ItemLocationSearchResponse(
+    val item: LocationSearchItemResponse,
+    val warehouse: LocationSearchWarehouseResponse,
+    val stock: LocationSearchStockResponse,
+    val locations: LocationSearchLocationsResponse
+)
+
+@Serializable
+data class LocationSearchItemResponse(
+    val id: Int,
+    val code: String = "",
+    val name: String = "",
+    val kana: String? = null,
+    val volume: String? = null,
+    @SerialName("volume_unit") val volumeUnit: String? = null,
+    @SerialName("capacity_case") val capacityCase: Int? = null,
+    @SerialName("capacity_carton") val capacityCarton: Int? = null,
+    val packaging: String? = null,
+    @SerialName("temperature_type") val temperatureType: String? = null,
+    @SerialName("uses_expiration_date") val usesExpirationDate: Boolean = false,
+    val images: List<String> = emptyList(),
+    @SerialName("search_codes") val searchCodes: List<ItemSearchCodeResponse> = emptyList(),
+    @SerialName("jan_codes") val janCodes: List<String> = emptyList(),
+    @SerialName("item_quantity_codes") val itemQuantityCodes: List<ItemQuantityCodeResponse> = emptyList()
+)
+
+@Serializable
+data class ItemSearchCodeResponse(
+    val code: String = "",
+    @SerialName("code_type") val codeType: String? = null,
+    @SerialName("quantity_type") val quantityType: String? = null,
+    val priority: Int? = null
+)
+
+@Serializable
+data class ItemQuantityCodeResponse(
+    @SerialName("product_code") val productCode: String? = null,
+    @SerialName("own_code") val ownCode: String? = null,
+    @SerialName("quantity_code") val quantityCode: String? = null,
+    val quantity: Int? = null,
+    @SerialName("can_order") val canOrder: Boolean = false
+)
+
+@Serializable
+data class LocationSearchWarehouseResponse(
+    val id: Int,
+    val code: String = "",
+    val name: String = "",
+    @SerialName("kana_name") val kanaName: String? = null
+)
+
+@Serializable
+data class LocationSearchStockResponse(
+    val status: String? = null,
+    @SerialName("has_stock") val hasStock: Boolean = false,
+    @SerialName("lot_count") val lotCount: Int = 0,
+    @SerialName("location_count") val locationCount: Int = 0,
+    @SerialName("current_quantity") val currentQuantity: Int = 0,
+    @SerialName("reserved_quantity") val reservedQuantity: Int = 0,
+    @SerialName("available_quantity") val availableQuantity: Int = 0,
+    @SerialName("earliest_expiration_date") val earliestExpirationDate: String? = null,
+    @SerialName("latest_expiration_date") val latestExpirationDate: String? = null
+)
+
+@Serializable
+data class LocationSearchLocationsResponse(
+    val suggested: ItemLocationResponse? = null,
+    @SerialName("default") val defaultLocation: ItemLocationResponse? = null,
+    val stock: List<StockLocationResponse> = emptyList()
+)
+
+@Serializable
+data class ItemLocationResponse(
+    val id: Int,
+    @SerialName("warehouse_id") val warehouseId: Int,
+    @SerialName("floor_id") val floorId: Int? = null,
+    val code: String = "",
+    @SerialName("display_name") val displayName: String = "",
+    val name: String? = null,
+    val source: String? = null
+)
+
+@Serializable
+data class StockLocationResponse(
+    val id: Int,
+    @SerialName("warehouse_id") val warehouseId: Int,
+    @SerialName("floor_id") val floorId: Int? = null,
+    val code: String = "",
+    @SerialName("display_name") val displayName: String = "",
+    val name: String? = null,
+    val source: String? = null,
+    @SerialName("lot_count") val lotCount: Int = 0,
+    @SerialName("current_quantity") val currentQuantity: Int = 0,
+    @SerialName("reserved_quantity") val reservedQuantity: Int = 0,
+    @SerialName("available_quantity") val availableQuantity: Int = 0
+)
