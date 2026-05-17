@@ -33,10 +33,17 @@ class LocationSearchViewModel @Inject constructor(
     }
 
     fun onQueryChange(query: String) {
-        _state.update { it.copy(query = query) }
+        val currentState = _state.value
+        val normalizedQuery = if (shouldReplacePreviousScanQuery(currentState, query)) {
+            query.removePrefix(currentState.query)
+        } else {
+            query
+        }
+
+        _state.update { it.copy(query = normalizedQuery) }
         searchJob?.cancel()
 
-        if (query.isBlank()) {
+        if (normalizedQuery.isBlank()) {
             _state.update {
                 it.copy(
                     results = emptyList(),
@@ -50,14 +57,25 @@ class LocationSearchViewModel @Inject constructor(
 
         searchJob = viewModelScope.launch {
             delay(250)
-            search(query)
+            search(normalizedQuery)
         }
     }
 
     fun onScan(value: String) {
         _state.update { it.copy(query = value) }
         searchJob?.cancel()
-        search(value)
+        search(value, clearQueryAfterSearch = true)
+    }
+
+    fun prepareForScan() {
+        searchJob?.cancel()
+        _state.update {
+            it.copy(
+                query = "",
+                isLoading = false,
+                errorMessage = null
+            )
+        }
     }
 
     fun searchNow() {
@@ -86,7 +104,23 @@ class LocationSearchViewModel @Inject constructor(
         _state.update { it.copy(errorMessage = null) }
     }
 
-    private fun search(rawQuery: String) {
+    private fun shouldReplacePreviousScanQuery(
+        state: LocationSearchState,
+        nextQuery: String
+    ): Boolean {
+        val previousQuery = state.query
+
+        return state.hasSearched
+            && !state.isLoading
+            && previousQuery.length >= 8
+            && nextQuery.length > previousQuery.length
+            && nextQuery.startsWith(previousQuery)
+    }
+
+    private fun search(
+        rawQuery: String,
+        clearQueryAfterSearch: Boolean = false
+    ) {
         val warehouseId = _state.value.warehouseId
         val query = rawQuery.trim()
 
@@ -101,6 +135,8 @@ class LocationSearchViewModel @Inject constructor(
                 it.copy(
                     isLoading = true,
                     hasSearched = true,
+                    results = emptyList(),
+                    selectedIndex = 0,
                     errorMessage = null
                 )
             }
@@ -111,7 +147,8 @@ class LocationSearchViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             results = results,
-                            selectedIndex = 0
+                            selectedIndex = 0,
+                            query = if (clearQueryAfterSearch) "" else it.query
                         )
                     }
                 }
@@ -121,7 +158,8 @@ class LocationSearchViewModel @Inject constructor(
                             isLoading = false,
                             results = emptyList(),
                             selectedIndex = 0,
-                            errorMessage = mapErrorMessage(error)
+                            errorMessage = mapErrorMessage(error),
+                            query = if (clearQueryAfterSearch) "" else it.query
                         )
                     }
                 }

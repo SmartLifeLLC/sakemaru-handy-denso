@@ -157,10 +157,15 @@ class IncomingViewModel @Inject constructor(
     /**
      * Search products with debounce.
      */
-    private fun searchProducts(query: String) {
+    private fun searchProducts(
+        query: String,
+        clearQueryAfterSearch: Boolean = false
+    ) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            delay(300) // Debounce 300ms
+            if (!clearQueryAfterSearch) {
+                delay(300) // Debounce 300ms
+            }
 
             val warehouseId = _state.value.selectedWarehouse?.id ?: return@launch
             val pickerId = _state.value.pickerId ?: return@launch
@@ -176,7 +181,8 @@ class IncomingViewModel @Inject constructor(
                             isSearching = false,
                             products = products,
                             workingScheduleIds = workingIds,
-                            selectedProductIndex = 0
+                            selectedProductIndex = 0,
+                            searchQuery = if (clearQueryAfterSearch) "" else it.searchQuery
                         )
                     }
                 }
@@ -184,7 +190,8 @@ class IncomingViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             isSearching = false,
-                            errorMessage = mapErrorMessage(error)
+                            errorMessage = mapErrorMessage(error),
+                            searchQuery = if (clearQueryAfterSearch) "" else it.searchQuery
                         )
                     }
                 }
@@ -196,7 +203,17 @@ class IncomingViewModel @Inject constructor(
      */
     fun onProductBarcodeScan(barcode: String) {
         _state.update { it.copy(searchQuery = barcode) }
-        searchProducts(barcode)
+        searchProducts(barcode, clearQueryAfterSearch = true)
+    }
+
+    fun prepareProductBarcodeScan() {
+        searchJob?.cancel()
+        _state.update {
+            it.copy(
+                searchQuery = "",
+                isSearching = false
+            )
+        }
     }
 
     /**

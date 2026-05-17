@@ -109,7 +109,8 @@ data class ItemLocation(
     val code: String,
     val displayName: String,
     val name: String? = null,
-    val source: String? = null
+    val source: String? = null,
+    val isNoLocation: Boolean = false
 )
 
 data class StockLocation(
@@ -120,6 +121,7 @@ data class StockLocation(
     val displayName: String,
     val name: String? = null,
     val source: String? = null,
+    val isNoLocation: Boolean = false,
     val lotCount: Int = 0,
     val currentQuantity: Int = 0,
     val reservedQuantity: Int = 0,

@@ -192,32 +192,57 @@ private fun ReadyContent(
             .focusRequester(screenFocusRequester)
             .focusable()
             .onKeyEvent { event ->
-                when (event.key) {
-                    Key.F1 -> {
+                when {
+                    event.key == Key.One || event.key == Key.NumPad1 -> {
                         SoundUtils.playBeep()
                         onNavigateToInboundWebView(authKey, warehouseId)
                         true
                     }
-                    Key.F2 -> {
-                        showLogoutDialog = true
-                        true
-                    }
-                    Key.F4 -> {
+                    event.key == Key.Two || event.key == Key.NumPad2 -> {
                         SoundUtils.playBeep()
                         onNavigateToOutbound()
                         true
                     }
-                    Key.F5 -> {
+                    event.key == Key.Three || event.key == Key.NumPad3 -> {
                         SoundUtils.playBeep()
                         onNavigateToMove()
                         true
                     }
-                    Key.F6 -> {
+                    event.key == Key.Four || event.key == Key.NumPad4 -> {
                         SoundUtils.playBeep()
                         onNavigateToInventory()
                         true
                     }
-                    Key.F7 -> {
+                    event.key == Key.Five || event.key == Key.NumPad5 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToLocationSearch()
+                        true
+                    }
+                    event.key == Key.F1 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToInboundWebView(authKey, warehouseId)
+                        true
+                    }
+                    event.key == Key.F2 -> {
+                        showLogoutDialog = true
+                        true
+                    }
+                    event.key == Key.F4 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToOutbound()
+                        true
+                    }
+                    event.key == Key.F5 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToMove()
+                        true
+                    }
+                    event.key == Key.F6 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToInventory()
+                        true
+                    }
+                    event.key == Key.F7 -> {
                         SoundUtils.playBeep()
                         onNavigateToLocationSearch()
                         true
@@ -268,13 +293,13 @@ private fun ReadyContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Row 1: 入庫 [F1], 出庫 [F4]
+            // Row 1: 入庫[1], 出庫[2]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 MenuButton(
-                    label = "入庫 [F1]",
+                    label = "入庫[1]",
                     count = pendingCounts.inbound,
                     topBorderColor = Color(0xFF2196F3), // Blue
                     onClick = {
@@ -285,7 +310,7 @@ private fun ReadyContent(
                 )
 
                 MenuButton(
-                    label = "出庫 [F4]",
+                    label = "出庫[2]",
                     count = pendingCounts.outbound,
                     topBorderColor = Color(0xFFE91E63), // Pink/Red
                     onClick = {
@@ -296,13 +321,13 @@ private fun ReadyContent(
                 )
             }
 
-            // Row 2: 移動, 棚卸
+            // Row 2: 移動[3], 棚卸し[4]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 MenuButton(
-                    label = "移動",
+                    label = "移動[3]",
                     count = 0,
                     topBorderColor = Color(0xFF9C27B0), // Purple
                     onClick = {
@@ -313,7 +338,7 @@ private fun ReadyContent(
                 )
 
                 MenuButton(
-                    label = "棚卸",
+                    label = "棚卸し[4]",
                     count = pendingCounts.inventory,
                     topBorderColor = Color(0xFFFF9800), // Orange
                     onClick = {
@@ -330,7 +355,7 @@ private fun ReadyContent(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 MenuButton(
-                    label = "ロケ検索",
+                    label = "ロケ検索[5]",
                     count = null,
                     topBorderColor = Color(0xFF607D8B), // Blue Grey
                     onClick = {

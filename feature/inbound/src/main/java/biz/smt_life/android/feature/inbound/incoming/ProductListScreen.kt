@@ -57,6 +57,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import biz.smt_life.android.core.designsystem.util.SoundUtils
 import biz.smt_life.android.core.domain.model.IncomingProduct
+import biz.smt_life.android.core.ui.ScanKeyHandler
 
 /**
  * Product List Screen for Incoming feature.
@@ -74,6 +75,11 @@ fun ProductListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val searchFocusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
+
+    ScanKeyHandler(
+        onScan = viewModel::onProductBarcodeScan,
+        onScanStart = viewModel::prepareProductBarcodeScan
+    )
 
     // Show error message
     LaunchedEffect(state.errorMessage) {

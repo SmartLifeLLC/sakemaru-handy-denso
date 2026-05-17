@@ -540,7 +540,8 @@ class IncomingRepositoryImpl @Inject constructor(
             code = code,
             displayName = displayName.ifBlank { code },
             name = name,
-            source = source
+            source = source,
+            isNoLocation = isNoLocation
         )
     }
 
@@ -553,6 +554,7 @@ class IncomingRepositoryImpl @Inject constructor(
             displayName = displayName.ifBlank { code },
             name = name,
             source = source,
+            isNoLocation = isNoLocation,
             lotCount = lotCount,
             currentQuantity = currentQuantity,
             reservedQuantity = reservedQuantity,

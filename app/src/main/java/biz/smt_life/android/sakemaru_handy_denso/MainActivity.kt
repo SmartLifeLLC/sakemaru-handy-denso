@@ -1,5 +1,7 @@
 package biz.smt_life.android.sakemaru_handy_denso
 
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -44,6 +46,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setBackgroundDrawable(ColorDrawable(Color.rgb(17, 24, 39)))
         enableEdgeToEdge()
 
         // Hide navigation bar (immersive mode)

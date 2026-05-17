@@ -224,7 +224,8 @@ data class ItemLocationResponse(
     val code: String = "",
     @SerialName("display_name") val displayName: String = "",
     val name: String? = null,
-    val source: String? = null
+    val source: String? = null,
+    @SerialName("is_no_location") val isNoLocation: Boolean = false
 )
 
 @Serializable
@@ -236,6 +237,7 @@ data class StockLocationResponse(
     @SerialName("display_name") val displayName: String = "",
     val name: String? = null,
     val source: String? = null,
+    @SerialName("is_no_location") val isNoLocation: Boolean = false,
     @SerialName("lot_count") val lotCount: Int = 0,
     @SerialName("current_quantity") val currentQuantity: Int = 0,
     @SerialName("reserved_quantity") val reservedQuantity: Int = 0,

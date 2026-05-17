@@ -75,7 +75,10 @@ fun LocationSearchScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val searchFocusRequester = remember { FocusRequester() }
 
-    ScanKeyHandler(onScan = viewModel::onScan)
+    ScanKeyHandler(
+        onScan = viewModel::onScan,
+        onScanStart = viewModel::prepareForScan
+    )
 
     LaunchedEffect(Unit) {
         searchFocusRequester.requestFocus()
@@ -154,7 +157,7 @@ fun LocationSearchScreen(
             )
 
             when {
-                state.isLoading && state.results.isEmpty() -> LoadingContent()
+                state.isLoading -> LoadingContent()
                 state.hasSearched && state.results.isEmpty() -> EmptyContent()
                 state.results.isEmpty() -> PromptContent()
                 else -> ResultContent(
@@ -209,6 +212,12 @@ private fun ResultContent(
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        state.selectedResult?.let { result ->
+            item {
+                DetailPanel(result = result)
+            }
+        }
+
         if (state.results.size > 1) {
             item {
                 Text(
@@ -223,12 +232,6 @@ private fun ResultContent(
                     selected = index == state.selectedIndex,
                     onClick = { onSelectResult(index) }
                 )
-            }
-        }
-
-        state.selectedResult?.let { result ->
-            item {
-                DetailPanel(result = result)
             }
         }
     }
@@ -346,10 +349,14 @@ private fun PrimaryLocationBanner(
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Text(
-                text = location?.code?.ifBlank { location.displayName } ?: "--",
+                text = location?.primaryDisplayText() ?: "--",
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = if (location?.isNoLocation == true) {
+                    FontFamily.Default
+                } else {
+                    FontFamily.Monospace
+                },
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -376,6 +383,14 @@ private fun PrimaryLocationBanner(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+private fun ItemLocation.primaryDisplayText(): String {
+    return if (isNoLocation) {
+        "フリーロケ"
+    } else {
+        code.ifBlank { displayName }
     }
 }
 

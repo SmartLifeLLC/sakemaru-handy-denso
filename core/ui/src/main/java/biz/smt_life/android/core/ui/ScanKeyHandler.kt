@@ -26,7 +26,10 @@ import kotlinx.coroutines.launch
  * ```
  */
 @Composable
-fun ScanKeyHandler(onScan: (String) -> Unit) {
+fun ScanKeyHandler(
+    onScan: (String) -> Unit,
+    onScanStart: () -> Unit = {}
+) {
     val view = LocalView.current
     var scanBuffer by remember { mutableStateOf("") }
     var resetJob by remember { mutableStateOf<Job?>(null) }
@@ -46,6 +49,9 @@ fun ScanKeyHandler(onScan: (String) -> Unit) {
                     else -> {
                         val char = event.unicodeChar.toChar()
                         if (char.isLetterOrDigit() || char in setOf('-', '_', ' ')) {
+                            if (scanBuffer.isEmpty()) {
+                                onScanStart()
+                            }
                             scanBuffer += char
 
                             // Reset buffer after 500ms of inactivity

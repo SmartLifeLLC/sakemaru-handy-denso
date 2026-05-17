@@ -113,7 +113,8 @@ Accept: application/json
             "code": "A-1-01",
             "display_name": "A-1-01 常温棚A",
             "name": "常温棚A",
-            "source": "item_default"
+            "source": "item_default",
+            "is_no_location": false
           },
           "default": {
             "id": 456,
@@ -122,7 +123,8 @@ Accept: application/json
             "code": "A-1-01",
             "display_name": "A-1-01 常温棚A",
             "name": "常温棚A",
-            "source": "item_default"
+            "source": "item_default",
+            "is_no_location": false
           },
           "stock": [
             {
@@ -133,6 +135,7 @@ Accept: application/json
               "display_name": "B-2-03 冷蔵棚B",
               "name": "冷蔵棚B",
               "source": "stock_lot",
+              "is_no_location": false,
               "lot_count": 2,
               "current_quantity": 24,
               "reserved_quantity": 4,
@@ -164,4 +167,5 @@ Accept: application/json
 - 複数件なら商品選択リストを出す。
 - 商品詳細は `item` / `stock` / `locations` の3ブロックで表示する。
 - 推奨ロケは `locations.suggested`。在庫ロケ一覧は `locations.stock`。
+- `locations.suggested.is_no_location` が `true` の場合は、大きいロケ表示を `code` ではなく「フリーロケ」にする。`id` と `code` は実在ロケーション値として保持する。
 - 入荷作業のロケ更新には既存 `PUT /api/incoming/work-items/{id}` の `location_id` を使う。
