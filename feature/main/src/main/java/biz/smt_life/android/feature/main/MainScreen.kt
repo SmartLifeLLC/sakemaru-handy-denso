@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
@@ -29,12 +31,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import biz.smt_life.android.core.designsystem.theme.HandyTheme
 import biz.smt_life.android.core.designsystem.util.SoundUtils
+import biz.smt_life.android.core.domain.model.IncomingWarehouse
 import biz.smt_life.android.core.domain.model.PendingCounts
 import biz.smt_life.android.core.domain.model.Warehouse
 
 @Composable
 fun MainRoute(
-    onNavigateToWarehouseSettings: () -> Unit,
     onNavigateToInbound: () -> Unit,
     onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
@@ -46,7 +48,6 @@ fun MainRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Listen for logout event
     LaunchedEffect(Unit) {
         viewModel.logoutEvent.collect {
             onLogout()
@@ -55,7 +56,6 @@ fun MainRoute(
 
     MainScreen(
         state = state,
-        onNavigateToWarehouseSettings = onNavigateToWarehouseSettings,
         onNavigateToInbound = onNavigateToInbound,
         onNavigateToInboundWebView = { authKey, warehouseId ->
             onNavigateToInboundWebView(authKey, warehouseId)
@@ -65,14 +65,16 @@ fun MainRoute(
         onNavigateToInventory = onNavigateToInventory,
         onNavigateToLocationSearch = onNavigateToLocationSearch,
         onLogoutClick = viewModel::logout,
-        onRetry = viewModel::retry
+        onRetry = viewModel::retry,
+        onShowWarehouseDialog = viewModel::showWarehouseDialog,
+        onDismissWarehouseDialog = viewModel::dismissWarehouseDialog,
+        onSelectWarehouse = viewModel::selectWarehouse
     )
 }
 
 @Composable
 fun MainScreen(
     state: MainUiState,
-    onNavigateToWarehouseSettings: () -> Unit,
     onNavigateToInbound: () -> Unit,
     onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
@@ -81,6 +83,9 @@ fun MainScreen(
     onNavigateToLocationSearch: () -> Unit,
     onLogoutClick: () -> Unit,
     onRetry: () -> Unit,
+    onShowWarehouseDialog: () -> Unit = {},
+    onDismissWarehouseDialog: () -> Unit = {},
+    onSelectWarehouse: (IncomingWarehouse) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     when (state) {
@@ -99,7 +104,11 @@ fun MainScreen(
                 appVersion = state.appVersion,
                 authKey = state.authKey,
                 warehouseId = state.warehouseId,
-                onNavigateToWarehouseSettings = onNavigateToWarehouseSettings,
+                warehouses = state.warehouses,
+                showWarehouseDialog = state.showWarehouseDialog,
+                onShowWarehouseDialog = onShowWarehouseDialog,
+                onDismissWarehouseDialog = onDismissWarehouseDialog,
+                onSelectWarehouse = onSelectWarehouse,
                 onNavigateToInbound = onNavigateToInbound,
                 onNavigateToInboundWebView = onNavigateToInboundWebView,
                 onNavigateToOutbound = onNavigateToOutbound,
@@ -142,7 +151,11 @@ private fun ReadyContent(
     appVersion: String,
     authKey: String,
     warehouseId: String,
-    onNavigateToWarehouseSettings: () -> Unit,
+    warehouses: List<IncomingWarehouse>,
+    showWarehouseDialog: Boolean,
+    onShowWarehouseDialog: () -> Unit,
+    onDismissWarehouseDialog: () -> Unit,
+    onSelectWarehouse: (IncomingWarehouse) -> Unit,
     onNavigateToInbound: () -> Unit,
     onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
@@ -154,7 +167,6 @@ private fun ReadyContent(
 ) {
     var showLogoutDialog by remember { mutableStateOf(false) }
 
-    // Logout confirmation dialog
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
@@ -173,6 +185,44 @@ private fun ReadyContent(
             dismissButton = {
                 TextButton(onClick = { showLogoutDialog = false }) {
                     Text("キャンセル")
+                }
+            }
+        )
+    }
+
+    if (showWarehouseDialog) {
+        AlertDialog(
+            onDismissRequest = onDismissWarehouseDialog,
+            title = { Text("倉庫選択") },
+            text = {
+                if (warehouses.isEmpty()) {
+                    Text("倉庫リストを取得できませんでした")
+                } else {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        warehouses.forEach { wh ->
+                            val isSelected = wh.id.toString() == warehouseId
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onSelectWarehouse(wh)
+                                    },
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = wh.name,
+                                    modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp),
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onDismissWarehouseDialog) {
+                    Text("閉じる")
                 }
             }
         )
@@ -274,7 +324,7 @@ private fun ReadyContent(
                     text = warehouse.name,
                     style = MaterialTheme.typography.headlineSmall
                 )
-                IconButton(onClick = onNavigateToWarehouseSettings) {
+                IconButton(onClick = onShowWarehouseDialog) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "倉庫設定"
@@ -508,7 +558,6 @@ private fun MainScreenLoadingPreview() {
     HandyTheme {
         MainScreen(
             state = MainUiState.Loading,
-            onNavigateToWarehouseSettings = {},
             onNavigateToInbound = {},
             onNavigateToInboundWebView = { _, _ -> },
             onNavigateToOutbound = {},
@@ -533,11 +582,10 @@ private fun MainScreenReadyPreview() {
                 pendingCounts = PendingCounts(5, 12, 3),
                 currentDate = "2024/10/07 Mon",
                 hostUrl = "https://handy.click",
-                appVersion = "Ver.1.1.1",
+                appVersion = "Ver.1.3.0",
                 authKey = "test_auth_key",
                 warehouseId = "001"
             ),
-            onNavigateToWarehouseSettings = {},
             onNavigateToInbound = {},
             onNavigateToInboundWebView = { _, _ -> },
             onNavigateToOutbound = {},
@@ -556,7 +604,6 @@ private fun MainScreenErrorPreview() {
     HandyTheme {
         MainScreen(
             state = MainUiState.Error("Network connection failed"),
-            onNavigateToWarehouseSettings = {},
             onNavigateToInbound = {},
             onNavigateToInboundWebView = { _, _ -> },
             onNavigateToOutbound = {},

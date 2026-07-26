@@ -2,6 +2,7 @@ package biz.smt_life.android.feature.inbound.locationsearch
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import biz.smt_life.android.core.designsystem.util.SoundUtils
 import biz.smt_life.android.core.domain.repository.IncomingRepository
 import biz.smt_life.android.core.network.NetworkException
 import biz.smt_life.android.core.ui.TokenManager
@@ -25,6 +26,7 @@ class LocationSearchViewModel @Inject constructor(
     val state: StateFlow<LocationSearchState> = _state.asStateFlow()
 
     private var searchJob: Job? = null
+    private var scanAutoSearchJob: Job? = null
 
     init {
         val defaultWarehouseId = tokenManager.getDefaultWarehouseId().takeIf { it > 0 }
@@ -33,32 +35,28 @@ class LocationSearchViewModel @Inject constructor(
     }
 
     fun onQueryChange(query: String) {
-        val currentState = _state.value
-        val normalizedQuery = if (shouldReplacePreviousScanQuery(currentState, query)) {
-            query.removePrefix(currentState.query)
-        } else {
-            query
-        }
+        val current = _state.value.query
+        val added = query.length - current.length
 
-        _state.update { it.copy(query = normalizedQuery) }
-        searchJob?.cancel()
-
-        if (normalizedQuery.isBlank()) {
-            _state.update {
-                it.copy(
-                    results = emptyList(),
-                    selectedIndex = 0,
-                    hasSearched = false,
-                    errorMessage = null
-                )
+        // スキャナー検知: 一度に4文字以上増えた → バーコード一括入力
+        if (added >= 4) {
+            val newValue = if (current.isNotEmpty() && query.startsWith(current)) {
+                query.substring(current.length)
+            } else {
+                query
+            }
+            _state.update { it.copy(query = newValue) }
+            scanAutoSearchJob?.cancel()
+            scanAutoSearchJob = viewModelScope.launch {
+                delay(200)
+                SoundUtils.playBeep()
+                searchJob?.cancel()
+                search(newValue, clearQueryAfterSearch = true)
             }
             return
         }
 
-        searchJob = viewModelScope.launch {
-            delay(250)
-            search(normalizedQuery)
-        }
+        _state.update { it.copy(query = query) }
     }
 
     fun onScan(value: String) {
@@ -102,19 +100,6 @@ class LocationSearchViewModel @Inject constructor(
 
     fun clearError() {
         _state.update { it.copy(errorMessage = null) }
-    }
-
-    private fun shouldReplacePreviousScanQuery(
-        state: LocationSearchState,
-        nextQuery: String
-    ): Boolean {
-        val previousQuery = state.query
-
-        return state.hasSearched
-            && !state.isLoading
-            && previousQuery.length >= 8
-            && nextQuery.length > previousQuery.length
-            && nextQuery.startsWith(previousQuery)
     }
 
     private fun search(

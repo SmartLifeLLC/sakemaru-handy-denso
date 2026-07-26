@@ -251,7 +251,7 @@ private fun LoginScreenErrorPreview() {
 @Preview(showBackground = true, showSystemUi = true, name = "Login Screen - Dark")
 @Composable
 private fun LoginScreenDarkPreview() {
-    HandyTheme(darkTheme = true) {
+    HandyTheme {
         LoginScreenContent(
             staffCode = "",
             password = "",

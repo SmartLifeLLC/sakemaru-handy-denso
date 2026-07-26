@@ -11,6 +11,7 @@ import biz.smt_life.android.core.domain.repository.ProfileRepository
 import biz.smt_life.android.core.network.BuildConfig
 import biz.smt_life.android.core.network.api.AuthService
 import biz.smt_life.android.core.network.api.IncomingApi
+import biz.smt_life.android.core.network.api.InventoryCountApi
 import biz.smt_life.android.core.network.api.PickingApi
 import biz.smt_life.android.core.network.fake.FakeInboundRepository
 import biz.smt_life.android.core.network.fake.FakeMainRepository
@@ -135,6 +136,12 @@ object NetworkProviderModule {
     @Singleton
     fun provideIncomingApi(retrofit: Retrofit): IncomingApi {
         return retrofit.create(IncomingApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideInventoryCountApi(retrofit: Retrofit): InventoryCountApi {
+        return retrofit.create(InventoryCountApi::class.java)
     }
 
     @Provides

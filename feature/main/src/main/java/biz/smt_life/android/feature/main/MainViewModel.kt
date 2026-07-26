@@ -2,9 +2,11 @@ package biz.smt_life.android.feature.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import biz.smt_life.android.core.domain.model.IncomingWarehouse
 import biz.smt_life.android.core.domain.model.PendingCounts
 import biz.smt_life.android.core.domain.model.Warehouse
 import biz.smt_life.android.core.domain.repository.AuthRepository
+import biz.smt_life.android.core.domain.repository.IncomingRepository
 import biz.smt_life.android.core.ui.HostPreferences
 import biz.smt_life.android.core.ui.TokenManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,6 +25,7 @@ import javax.inject.Inject
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    private val incomingRepository: IncomingRepository,
     private val tokenManager: TokenManager,
     private val hostPreferences: HostPreferences
 ) : ViewModel() {
@@ -58,24 +61,45 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun showWarehouseDialog() {
+        val current = _uiState.value
+        if (current is MainUiState.Ready) {
+            _uiState.value = current.copy(showWarehouseDialog = true)
+        }
+    }
+
+    fun dismissWarehouseDialog() {
+        val current = _uiState.value
+        if (current is MainUiState.Ready) {
+            _uiState.value = current.copy(showWarehouseDialog = false)
+        }
+    }
+
+    fun selectWarehouse(warehouse: IncomingWarehouse) {
+        tokenManager.setDefaultWarehouseId(warehouse.id)
+        _uiState.value = MainUiState.Loading
+        loadData()
+    }
+
     private fun loadData() {
         viewModelScope.launch {
             try {
-                // Get picker info from TokenManager
                 val pickerCode = tokenManager.getPickerCode()
                 val pickerName = tokenManager.getPickerName()
                 val warehouseId = tokenManager.getDefaultWarehouseId()
                 val authToken = tokenManager.getToken() ?: ""
 
-                // Get host URL from HostPreferences
                 val hostUrl = hostPreferences.baseUrl.first()
 
-                // TODO: Replace with actual repository calls when available
-                // For now, use warehouse ID as the warehouse name placeholder
-                val warehouse = if (warehouseId > 0) {
+                val warehouses = incomingRepository.getWarehouses().getOrDefault(emptyList())
+
+                val matched = warehouses.firstOrNull { it.id == warehouseId }
+                val warehouse = if (matched != null) {
+                    Warehouse(matched.id.toString(), matched.name)
+                } else if (warehouseId > 0) {
                     Warehouse(warehouseId.toString(), "倉庫 #$warehouseId")
                 } else {
-                    Warehouse("001", "東京倉庫")
+                    Warehouse("0", "未設定")
                 }
 
                 val pendingCounts = PendingCounts(
@@ -84,7 +108,7 @@ class MainViewModel @Inject constructor(
                     inventory = 0
                 )
                 val currentDate = getCurrentDate()
-                val appVersion = "Ver.1.0" // TODO: Get from BuildConfig
+                val appVersion = "Ver.1.3.0"
 
                 _uiState.value = MainUiState.Ready(
                     pickerCode = pickerCode,
@@ -95,7 +119,8 @@ class MainViewModel @Inject constructor(
                     hostUrl = hostUrl,
                     appVersion = appVersion,
                     authKey = authToken,
-                    warehouseId = warehouseId.toString()
+                    warehouseId = warehouseId.toString(),
+                    warehouses = warehouses
                 )
             } catch (e: Exception) {
                 _uiState.value = MainUiState.Error(
@@ -120,4 +145,3 @@ class MainViewModel @Inject constructor(
         }
     }
 }
-

@@ -35,6 +35,7 @@ import biz.smt_life.android.feature.outbound.tasks.PickingTasksViewModel
 import biz.smt_life.android.feature.outbound.picking.OutboundPickingScreen
 import biz.smt_life.android.feature.outbound.picking.PickingHistoryScreen
 import biz.smt_life.android.feature.settings.SettingsScreen
+import biz.smt_life.android.sakemaru_handy_denso.inventory.InventoryCountScreen
 
 @Composable
 fun HandyNavHost(
@@ -71,9 +72,6 @@ fun HandyNavHost(
 
         composable(Routes.Main.route) { backStackEntry ->
             MainRoute(
-                onNavigateToWarehouseSettings = {
-                    navController.navigate(Routes.Settings.route)
-                },
                 onNavigateToInbound = {
                     navController.navigate(Routes.Inbound.route)
                 },
@@ -347,6 +345,14 @@ fun HandyNavHost(
 
         composable(Routes.LocationSearch.route) {
             LocationSearchScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Routes.Inventory.route) {
+            InventoryCountScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }
