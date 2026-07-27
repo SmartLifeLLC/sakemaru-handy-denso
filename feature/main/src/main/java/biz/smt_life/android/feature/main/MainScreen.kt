@@ -40,6 +40,7 @@ fun MainRoute(
     onNavigateToInbound: () -> Unit,
     onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
+    onNavigateToOutboundInspection: () -> Unit,
     onNavigateToMove: () -> Unit,
     onNavigateToInventory: () -> Unit,
     onNavigateToLocationSearch: () -> Unit,
@@ -61,6 +62,7 @@ fun MainRoute(
             onNavigateToInboundWebView(authKey, warehouseId)
         },
         onNavigateToOutbound = onNavigateToOutbound,
+        onNavigateToOutboundInspection = onNavigateToOutboundInspection,
         onNavigateToMove = onNavigateToMove,
         onNavigateToInventory = onNavigateToInventory,
         onNavigateToLocationSearch = onNavigateToLocationSearch,
@@ -78,6 +80,7 @@ fun MainScreen(
     onNavigateToInbound: () -> Unit,
     onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
+    onNavigateToOutboundInspection: () -> Unit,
     onNavigateToMove: () -> Unit,
     onNavigateToInventory: () -> Unit,
     onNavigateToLocationSearch: () -> Unit,
@@ -112,6 +115,7 @@ fun MainScreen(
                 onNavigateToInbound = onNavigateToInbound,
                 onNavigateToInboundWebView = onNavigateToInboundWebView,
                 onNavigateToOutbound = onNavigateToOutbound,
+                onNavigateToOutboundInspection = onNavigateToOutboundInspection,
                 onNavigateToMove = onNavigateToMove,
                 onNavigateToInventory = onNavigateToInventory,
                 onNavigateToLocationSearch = onNavigateToLocationSearch,
@@ -159,6 +163,7 @@ private fun ReadyContent(
     onNavigateToInbound: () -> Unit,
     onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
+    onNavigateToOutboundInspection: () -> Unit,
     onNavigateToMove: () -> Unit,
     onNavigateToInventory: () -> Unit,
     onNavigateToLocationSearch: () -> Unit,
@@ -266,6 +271,11 @@ private fun ReadyContent(
                     event.key == Key.Five || event.key == Key.NumPad5 -> {
                         SoundUtils.playBeep()
                         onNavigateToLocationSearch()
+                        true
+                    }
+                    event.key == Key.Six || event.key == Key.NumPad6 -> {
+                        SoundUtils.playBeep()
+                        onNavigateToOutboundInspection()
                         true
                     }
                     event.key == Key.F1 -> {
@@ -399,7 +409,7 @@ private fun ReadyContent(
                 )
             }
 
-            // Row 3: ロケ検索, 終了 [F2]
+            // Row 3: ロケ検索[5], 出庫検品[6]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -416,11 +426,12 @@ private fun ReadyContent(
                 )
 
                 MenuButton(
-                    label = "終了 [F2]",
+                    label = "出庫検品[6]",
                     count = null,
-                    topBorderColor = Color(0xFF795548), // Brown
+                    topBorderColor = Color(0xFF1565C0), // Blue
                     onClick = {
-                        showLogoutDialog = true
+                        SoundUtils.playBeep()
+                        onNavigateToOutboundInspection()
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -561,6 +572,7 @@ private fun MainScreenLoadingPreview() {
             onNavigateToInbound = {},
             onNavigateToInboundWebView = { _, _ -> },
             onNavigateToOutbound = {},
+            onNavigateToOutboundInspection = {},
             onNavigateToMove = {},
             onNavigateToInventory = {},
             onNavigateToLocationSearch = {},
@@ -589,6 +601,7 @@ private fun MainScreenReadyPreview() {
             onNavigateToInbound = {},
             onNavigateToInboundWebView = { _, _ -> },
             onNavigateToOutbound = {},
+            onNavigateToOutboundInspection = {},
             onNavigateToMove = {},
             onNavigateToInventory = {},
             onNavigateToLocationSearch = {},
@@ -607,6 +620,7 @@ private fun MainScreenErrorPreview() {
             onNavigateToInbound = {},
             onNavigateToInboundWebView = { _, _ -> },
             onNavigateToOutbound = {},
+            onNavigateToOutboundInspection = {},
             onNavigateToMove = {},
             onNavigateToInventory = {},
             onNavigateToLocationSearch = {},

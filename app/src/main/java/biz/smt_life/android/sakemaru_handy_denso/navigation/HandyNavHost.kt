@@ -34,6 +34,11 @@ import biz.smt_life.android.feature.outbound.tasks.PickingTasksScreen
 import biz.smt_life.android.feature.outbound.tasks.PickingTasksViewModel
 import biz.smt_life.android.feature.outbound.picking.OutboundPickingScreen
 import biz.smt_life.android.feature.outbound.picking.PickingHistoryScreen
+import biz.smt_life.android.feature.outbound.inspection.OutboundInspectionCourseScreen
+import biz.smt_life.android.feature.outbound.inspection.OutboundInspectionFloorScreen
+import biz.smt_life.android.feature.outbound.inspection.OutboundInspectionPeriodScreen
+import biz.smt_life.android.feature.outbound.inspection.OutboundInspectionScanScreen
+import biz.smt_life.android.feature.outbound.inspection.OutboundInspectionViewModel
 import biz.smt_life.android.feature.settings.SettingsScreen
 import biz.smt_life.android.sakemaru_handy_denso.inventory.InventoryCountScreen
 
@@ -86,6 +91,11 @@ fun HandyNavHost(
                     navController.navigate(Routes.PickingList.route) {
                         launchSingleTop = true
                         restoreState = true
+                    }
+                },
+                onNavigateToOutboundInspection = {
+                    navController.navigate(Routes.OutboundInspectionPeriod.route) {
+                        launchSingleTop = true
                     }
                 },
                 onNavigateToMove = {
@@ -336,6 +346,58 @@ fun HandyNavHost(
                     pickingTasksViewModel.refresh()
                     navController.popBackStack()
                 }
+            )
+        }
+
+        // Outbound inspection routes (出庫検品)
+        composable(Routes.OutboundInspectionPeriod.route) { backStackEntry ->
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Routes.OutboundInspectionPeriod.route)
+            }
+            val viewModel: OutboundInspectionViewModel = hiltViewModel(parentEntry)
+
+            OutboundInspectionPeriodScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToCourse = { navController.navigate(Routes.OutboundInspectionCourse.route) },
+                viewModel = viewModel
+            )
+        }
+
+        composable(Routes.OutboundInspectionCourse.route) { backStackEntry ->
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Routes.OutboundInspectionPeriod.route)
+            }
+            val viewModel: OutboundInspectionViewModel = hiltViewModel(parentEntry)
+
+            OutboundInspectionCourseScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToFloor = { navController.navigate(Routes.OutboundInspectionFloor.route) },
+                viewModel = viewModel
+            )
+        }
+
+        composable(Routes.OutboundInspectionFloor.route) { backStackEntry ->
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Routes.OutboundInspectionPeriod.route)
+            }
+            val viewModel: OutboundInspectionViewModel = hiltViewModel(parentEntry)
+
+            OutboundInspectionFloorScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToScan = { navController.navigate(Routes.OutboundInspectionScan.route) },
+                viewModel = viewModel
+            )
+        }
+
+        composable(Routes.OutboundInspectionScan.route) { backStackEntry ->
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Routes.OutboundInspectionPeriod.route)
+            }
+            val viewModel: OutboundInspectionViewModel = hiltViewModel(parentEntry)
+
+            OutboundInspectionScanScreen(
+                onNavigateBack = { navController.popBackStack() },
+                viewModel = viewModel
             )
         }
 

@@ -169,6 +169,8 @@ fun SettingsScreen(
                     )
                     Text(
                         text = "• URLはhttp://またはhttps://で始まる必要があります\n" +
+                                "• AndroidエミュレータからMacのローカルWMSへ接続する場合は http://10.0.2.2:8002/ を使用してください\n" +
+                                "• 実機HANDYからMacへ接続する場合はMacのLAN IPを指定してください\n" +
                                 "• 変更は即座に反映されます\n" +
                                 "• 保存する前にサーバーに接続できることを確認してください",
                         style = MaterialTheme.typography.bodySmall,
