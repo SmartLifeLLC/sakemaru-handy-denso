@@ -337,8 +337,29 @@ fun OutboundInspectionFloorScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
+    var selectedFloorIndex by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    LaunchedEffect(state.selectedCourse?.deliveryCourseId, state.floors.size) {
+        selectedFloorIndex = selectedFloorIndex.coerceIn(0, (state.floors.size - 1).coerceAtLeast(0))
+    }
+
+    fun moveFloorSelection(delta: Int) {
+        if (state.floors.isEmpty()) return
+        val nextIndex = (selectedFloorIndex + delta).coerceIn(0, state.floors.lastIndex)
+        if (nextIndex != selectedFloorIndex) {
+            SoundUtils.playTick()
+            selectedFloorIndex = nextIndex
+        }
+    }
+
+    fun selectHighlightedFloor() {
+        state.floors.getOrNull(selectedFloorIndex)?.let { floor ->
+            SoundUtils.playTick()
+            viewModel.selectFloor(floor)
+            onNavigateToScan()
+        }
+    }
 
     InspectionShell(
         title = "出庫検品",
@@ -351,6 +372,18 @@ fun OutboundInspectionFloorScreen(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
+                    Key.DirectionUp -> {
+                        moveFloorSelection(-1)
+                        true
+                    }
+                    Key.DirectionDown -> {
+                        moveFloorSelection(1)
+                        true
+                    }
+                    Key.Enter -> {
+                        selectHighlightedFloor()
+                        true
+                    }
                     Key.One, Key.NumPad1 -> state.floors.getOrNull(0)?.let {
                         SoundUtils.playTick()
                         viewModel.selectFloor(it)
@@ -395,7 +428,9 @@ fun OutboundInspectionFloorScreen(
                     FloorButton(
                         floor = floor,
                         keyLabel = "[${index + 1}]",
+                        selected = index == selectedFloorIndex,
                         onClick = {
+                            selectedFloorIndex = index
                             SoundUtils.playTick()
                             viewModel.selectFloor(floor)
                             onNavigateToScan()
@@ -885,11 +920,13 @@ private fun CourseRow(
 private fun FloorButton(
     floor: OutboundInspectionFloor,
     keyLabel: String,
+    selected: Boolean,
     onClick: () -> Unit
 ) {
     SquareButton(
         title = "${floor.floorLabel} $keyLabel",
         subtitle = "${floor.summary.itemCount}商品 / 総バラ ${floor.summary.totalPieces}",
+        selected = selected,
         onClick = onClick
     )
 }
@@ -1084,9 +1121,9 @@ private fun ItemResultPanel(
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = color)
-            Text(item.itemName, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextMain)
-            Text("棚番: ${item.location.locationCode}", fontSize = 12.sp, color = TextSub)
-            QuantityRow("ピッキング数量", item.plannedQuantity, emphasized = true)
+            Text(item.itemName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextMain)
+            Text("棚番: ${item.location.locationCode}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BlueDark)
+            QuantityRow(item.plannedQuantity)
             extraMessage?.let {
                 Text(it, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Red)
             }
@@ -1095,24 +1132,34 @@ private fun ItemResultPanel(
 }
 
 @Composable
-private fun QuantityRow(
-    label: String,
-    quantity: OutboundInspectionQuantity,
-    emphasized: Boolean = false
-) {
-    val labelSize = if (emphasized) 14.sp else 11.sp
-    val valueSize = if (emphasized) 22.sp else 13.sp
+private fun QuantityRow(quantity: OutboundInspectionQuantity) {
     Surface(
         modifier = Modifier.fillMaxWidth().border(1.dp, GrayBorder, RectangleShape),
         color = Color.White,
         shape = RectangleShape
     ) {
-        Column(modifier = Modifier.padding(7.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(label, fontSize = labelSize, color = TextSub)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("ケース ${quantity.caseQty}", fontSize = valueSize, fontWeight = FontWeight.Bold, color = TextMain)
-                Text("バラ ${quantity.pieceQty}", fontSize = valueSize, fontWeight = FontWeight.Bold, color = TextMain)
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "ケース ${quantity.caseQty}",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextMain,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Start
+            )
+            Text("|", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = GrayBorder)
+            Text(
+                text = "バラ ${quantity.pieceQty}",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextMain,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.End
+            )
         }
     }
 }

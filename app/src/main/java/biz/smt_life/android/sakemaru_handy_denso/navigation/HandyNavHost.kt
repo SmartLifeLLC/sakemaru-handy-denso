@@ -1,5 +1,6 @@
 package biz.smt_life.android.sakemaru_handy_denso.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import biz.smt_life.android.feature.inbound.InboundScreen
 import biz.smt_life.android.feature.inbound.InboundWebViewScreen
@@ -48,6 +50,37 @@ fun HandyNavHost(
     startDestination: String,
     modifier: Modifier = Modifier
 ) {
+    fun navigateSingleTop(route: String) {
+        navController.navigate(route) {
+            launchSingleTop = true
+        }
+    }
+
+    fun popBackTo(route: String) {
+        if (!navController.popBackStack(route, inclusive = false)) {
+            navigateSingleTop(route)
+        }
+    }
+
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+
+    BackHandler(
+        enabled = currentRoute == Routes.Main.route ||
+            currentRoute == Routes.OutboundInspectionPeriod.route ||
+            currentRoute == Routes.OutboundInspectionCourse.route ||
+            currentRoute == Routes.OutboundInspectionFloor.route ||
+            currentRoute == Routes.OutboundInspectionScan.route
+    ) {
+        when (currentRoute) {
+            Routes.OutboundInspectionPeriod.route -> popBackTo(Routes.Main.route)
+            Routes.OutboundInspectionCourse.route -> popBackTo(Routes.OutboundInspectionPeriod.route)
+            Routes.OutboundInspectionFloor.route -> popBackTo(Routes.OutboundInspectionCourse.route)
+            Routes.OutboundInspectionScan.route -> popBackTo(Routes.OutboundInspectionFloor.route)
+            else -> Unit
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -357,8 +390,8 @@ fun HandyNavHost(
             val viewModel: OutboundInspectionViewModel = hiltViewModel(parentEntry)
 
             OutboundInspectionPeriodScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToCourse = { navController.navigate(Routes.OutboundInspectionCourse.route) },
+                onNavigateBack = { popBackTo(Routes.Main.route) },
+                onNavigateToCourse = { navigateSingleTop(Routes.OutboundInspectionCourse.route) },
                 viewModel = viewModel
             )
         }
@@ -370,8 +403,8 @@ fun HandyNavHost(
             val viewModel: OutboundInspectionViewModel = hiltViewModel(parentEntry)
 
             OutboundInspectionCourseScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToFloor = { navController.navigate(Routes.OutboundInspectionFloor.route) },
+                onNavigateBack = { popBackTo(Routes.OutboundInspectionPeriod.route) },
+                onNavigateToFloor = { navigateSingleTop(Routes.OutboundInspectionFloor.route) },
                 viewModel = viewModel
             )
         }
@@ -383,8 +416,8 @@ fun HandyNavHost(
             val viewModel: OutboundInspectionViewModel = hiltViewModel(parentEntry)
 
             OutboundInspectionFloorScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToScan = { navController.navigate(Routes.OutboundInspectionScan.route) },
+                onNavigateBack = { popBackTo(Routes.OutboundInspectionCourse.route) },
+                onNavigateToScan = { navigateSingleTop(Routes.OutboundInspectionScan.route) },
                 viewModel = viewModel
             )
         }
@@ -396,7 +429,7 @@ fun HandyNavHost(
             val viewModel: OutboundInspectionViewModel = hiltViewModel(parentEntry)
 
             OutboundInspectionScanScreen(
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = { popBackTo(Routes.OutboundInspectionFloor.route) },
                 viewModel = viewModel
             )
         }
