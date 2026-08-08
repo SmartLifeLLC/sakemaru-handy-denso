@@ -196,6 +196,7 @@ fun ScheduleListScreen(
                     ) { index, schedule ->
                         ScheduleListItem(
                             schedule = schedule,
+                            capacityCase = product.capacityCase,
                             isSelected = index == state.selectedScheduleIndex,
                             onClick = {
                                 SoundUtils.playBeep()
@@ -313,10 +314,11 @@ private fun TotalQuantityBar(
 @Composable
 private fun ScheduleListItem(
     schedule: IncomingSchedule,
+    capacityCase: Int?,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val canWork = schedule.status.canStartWork
+    val canWork = schedule.status.canStartWork || schedule.isUnplanned
 
     Row(
         modifier = Modifier
@@ -339,7 +341,7 @@ private fun ScheduleListItem(
         ) {
             // Warehouse name
             Text(
-                text = schedule.warehouseName ?: "",
+                text = schedule.warehouseName ?: if (schedule.isUnplanned) "予定なし入荷" else "",
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Bold
                 )
@@ -347,11 +349,26 @@ private fun ScheduleListItem(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Expected date
-            schedule.expectedArrivalDate?.let { dateStr ->
-                val formattedDate = formatDateForDisplay(dateStr)
+            if (schedule.inspectionPolicy == "EOS_HISTORY_ONLY" || schedule.isEosSent) {
                 Text(
-                    text = "予定日: $formattedDate",
+                    text = "EOS同期対象（履歴のみ）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            } else if (schedule.isUnplanned) {
+                Text(
+                    text = "入荷予定なし。WMS送信時に予定なし入荷として判定します。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+
+            // Order and expected dates
+            val orderDateText = schedule.orderDate?.let { "発注日: ${formatDateForDisplay(it)}" }
+            val expectedDateText = schedule.expectedArrivalDate?.let { "予定日: ${formatDateForDisplay(it)}" }
+            if (orderDateText != null || expectedDateText != null) {
+                Text(
+                    text = listOfNotNull(orderDateText, expectedDateText).joinToString("  "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -387,8 +404,10 @@ private fun ScheduleListItem(
 
         // Right side: Quantity button
         QuantityButton(
-            remainingQuantity = schedule.remainingQuantity,
-            expectedQuantity = schedule.expectedQuantity,
+            remainingQuantity = schedule.remainingPieceQuantity ?: schedule.remainingQuantity,
+            expectedQuantity = schedule.expectedPieceQuantity ?: schedule.expectedQuantity,
+            capacityCase = capacityCase,
+            isUnplanned = schedule.isUnplanned,
             enabled = canWork,
             onClick = onClick
         )
@@ -399,6 +418,8 @@ private fun ScheduleListItem(
 private fun QuantityButton(
     remainingQuantity: Int,
     expectedQuantity: Int,
+    capacityCase: Int?,
+    isUnplanned: Boolean,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
@@ -417,15 +438,22 @@ private fun QuantityButton(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "予定数",
+                text = if (isUnplanned) "予定なし" else "予定数",
                 style = MaterialTheme.typography.labelSmall
             )
             Text(
-                text = remainingQuantity.toString(),
-                style = MaterialTheme.typography.titleLarge.copy(
+                text = if (isUnplanned) "入力" else formatCasePiece(remainingQuantity, capacityCase),
+                style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold
-                )
+                ),
+                maxLines = 2
             )
+            if (!isUnplanned) {
+                Text(
+                    text = "予定 ${formatCasePiece(expectedQuantity, capacityCase)}",
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
         }
     }
 }
@@ -462,4 +490,11 @@ private fun formatDateForDisplay(dateStr: String): String {
     } catch (e: Exception) {
         dateStr
     }
+}
+
+private fun formatCasePiece(quantity: Int, capacityCase: Int?): String {
+    val capacity = capacityCase?.takeIf { it > 1 } ?: return "バラ $quantity"
+    val caseQuantity = quantity / capacity
+    val pieceQuantity = quantity % capacity
+    return "ケース $caseQuantity / バラ $pieceQuantity"
 }

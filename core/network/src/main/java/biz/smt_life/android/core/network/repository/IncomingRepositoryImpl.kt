@@ -1,11 +1,17 @@
 package biz.smt_life.android.core.network.repository
 
+import biz.smt_life.android.core.domain.model.IncomingInspectionBatchSyncData
+import biz.smt_life.android.core.domain.model.IncomingInspectionBatchSyncResult
+import biz.smt_life.android.core.domain.model.IncomingInspectionDetailData
+import biz.smt_life.android.core.domain.model.IncomingInspectionDetailSyncResult
+import biz.smt_life.android.core.domain.model.IncomingItemQuantityCode
 import biz.smt_life.android.core.domain.model.IncomingProduct
 import biz.smt_life.android.core.domain.model.IncomingQuantityType
 import biz.smt_life.android.core.domain.model.IncomingSchedule
 import biz.smt_life.android.core.domain.model.IncomingScheduleStatus
 import biz.smt_life.android.core.domain.model.IncomingWarehouse
 import biz.smt_life.android.core.domain.model.IncomingWarehouseSummary
+import biz.smt_life.android.core.domain.model.IncomingSnapshot
 import biz.smt_life.android.core.domain.model.IncomingWorkItem
 import biz.smt_life.android.core.domain.model.IncomingWorkStatus
 import biz.smt_life.android.core.domain.model.ItemLocation
@@ -27,8 +33,15 @@ import biz.smt_life.android.core.network.ErrorMapper
 import biz.smt_life.android.core.network.NetworkException
 import biz.smt_life.android.core.network.api.IncomingApi
 import biz.smt_life.android.core.network.model.ApiEnvelope
+import biz.smt_life.android.core.network.model.IncomingInspectionBatchSyncRequest
+import biz.smt_life.android.core.network.model.IncomingInspectionBatchSyncResponse
+import biz.smt_life.android.core.network.model.IncomingInspectionDetailRequest
+import biz.smt_life.android.core.network.model.IncomingInspectionDetailResponse
 import biz.smt_life.android.core.network.model.IncomingProductResponse
 import biz.smt_life.android.core.network.model.IncomingScheduleResponse
+import biz.smt_life.android.core.network.model.IncomingSnapshotItemResponse
+import biz.smt_life.android.core.network.model.IncomingSnapshotResponse
+import biz.smt_life.android.core.network.model.IncomingSnapshotScheduleResponse
 import biz.smt_life.android.core.network.model.IncomingWorkItemResponse
 import biz.smt_life.android.core.network.model.ItemLocationResponse
 import biz.smt_life.android.core.network.model.ItemLocationSearchResponse
@@ -319,6 +332,46 @@ class IncomingRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getIncomingSnapshot(
+        warehouseId: Int,
+        inspectionDate: String?
+    ): Result<IncomingSnapshot> {
+        return try {
+            val response = incomingApi.getIncomingSnapshot(
+                warehouseId = warehouseId,
+                inspectionDate = inspectionDate
+            )
+
+            if (response.isSuccess && response.result?.data != null) {
+                Result.success(response.result.data.toDomainModel(warehouseId))
+            } else {
+                val errorMessage = extractErrorMessage(response.result, "入荷検品データの同期に失敗しました")
+                Result.failure(Exception(errorMessage))
+            }
+        } catch (e: Exception) {
+            val mappedException = errorMapper.mapException(e)
+            Result.failure(mappedException)
+        }
+    }
+
+    override suspend fun syncIncomingInspectionBatch(
+        data: IncomingInspectionBatchSyncData
+    ): Result<IncomingInspectionBatchSyncResult> {
+        return try {
+            val response = incomingApi.syncIncomingInspectionBatch(data.toRequest())
+
+            if (response.isSuccess && response.result?.data != null) {
+                Result.success(response.result.data.toDomainModel())
+            } else {
+                val errorMessage = extractErrorMessage(response.result, "入荷検品結果の送信に失敗しました")
+                Result.failure(NetworkException.ValidationError(errorMessage))
+            }
+        } catch (e: Exception) {
+            val mappedException = errorMapper.mapException(e)
+            Result.failure(mappedException)
+        }
+    }
+
     // ============================================================
     // Helper Functions
     // ============================================================
@@ -370,6 +423,143 @@ class IncomingRepositoryImpl @Inject constructor(
         )
     }
 
+    private fun IncomingSnapshotResponse.toDomainModel(workWarehouseId: Int): IncomingSnapshot {
+        val scheduleGroups = schedules
+            .mapNotNull { schedule ->
+                val item = schedule.item ?: return@mapNotNull null
+                item.id to schedule.toDomainModel()
+            }
+            .groupBy({ it.first }, { it.second })
+
+        val itemMap = linkedMapOf<Int, IncomingSnapshotItemResponse>()
+        schedules.forEach { schedule ->
+            schedule.item?.let { itemMap[it.id] = it }
+        }
+        items.forEach { itemMap[it.id] = it }
+
+        val products = itemMap.values.map { item ->
+            val productSchedules = scheduleGroups[item.id].orEmpty()
+            val schedulesForProduct = productSchedules.ifEmpty {
+                listOf(item.toUnplannedSchedule(workWarehouseId))
+            }
+            val expectedTotal = schedulesForProduct.sumOf { it.expectedPieceQuantity ?: it.expectedQuantity }
+            val receivedTotal = schedulesForProduct.sumOf { it.receivedPieceQuantity ?: it.receivedQuantity }
+            val remainingTotal = schedulesForProduct.sumOf { it.remainingPieceQuantity ?: it.remainingQuantity }
+
+            item.toIncomingProduct(
+                schedules = schedulesForProduct,
+                expectedTotal = expectedTotal,
+                receivedTotal = receivedTotal,
+                remainingTotal = remainingTotal
+            )
+        }
+
+        return IncomingSnapshot(
+            inspectionDate = inspectionDate,
+            generatedAt = generatedAt,
+            warehouse = warehouse?.toDomainModel(),
+            matchingWarehouseIds = rules?.matchingWarehouseIds.orEmpty(),
+            products = products,
+            locations = locations.map { it.toDomainModel() }
+        )
+    }
+
+    private fun IncomingSnapshotItemResponse.toIncomingProduct(
+        schedules: List<IncomingSchedule>,
+        expectedTotal: Int,
+        receivedTotal: Int,
+        remainingTotal: Int
+    ): IncomingProduct {
+        val codeValues = searchCodes.mapNotNull { it.code.takeIf { code -> code.isNotBlank() } }
+        val janCodeValues = searchCodes
+            .filter { it.codeType.equals("JAN", ignoreCase = true) }
+            .mapNotNull { it.code.takeIf { code -> code.isNotBlank() } }
+            .ifEmpty { codeValues }
+
+        return IncomingProduct(
+            itemId = id,
+            itemCode = code,
+            itemName = name,
+            searchCode = codeValues.firstOrNull(),
+            searchCodes = codeValues,
+            itemQuantityCodes = itemQuantityCodes.map { it.toIncomingItemQuantityCode() },
+            janCodes = janCodeValues,
+            volume = volume,
+            volumeUnit = volumeUnit,
+            capacityCase = capacityCase,
+            temperatureType = temperatureType,
+            defaultLocation = defaultLocation?.toDomainModel(),
+            totalExpectedQuantity = expectedTotal,
+            totalReceivedQuantity = receivedTotal,
+            totalRemainingQuantity = remainingTotal,
+            warehouses = schedules
+                .groupBy { it.warehouseId }
+                .map { (warehouseId, warehouseSchedules) ->
+                    IncomingWarehouseSummary(
+                        warehouseId = warehouseId,
+                        warehouseCode = "",
+                        warehouseName = warehouseSchedules.firstOrNull()?.warehouseName.orEmpty(),
+                        expectedQuantity = warehouseSchedules.sumOf { it.expectedPieceQuantity ?: it.expectedQuantity },
+                        receivedQuantity = warehouseSchedules.sumOf { it.receivedPieceQuantity ?: it.receivedQuantity },
+                        remainingQuantity = warehouseSchedules.sumOf { it.remainingPieceQuantity ?: it.remainingQuantity }
+                    )
+                },
+            schedules = schedules
+        )
+    }
+
+    private fun IncomingSnapshotItemResponse.toUnplannedSchedule(workWarehouseId: Int): IncomingSchedule {
+        return IncomingSchedule(
+            id = -id,
+            warehouseId = workWarehouseId,
+            warehouseName = null,
+            isUnplanned = true,
+            orderSource = "APP_UNPLANNED",
+            orderSourceLabel = "予定なし入荷",
+            inspectionPolicy = "APP_CONFIRM_ALLOWED",
+            status = IncomingScheduleStatus.PENDING,
+            location = defaultLocation?.toDomainModel(),
+            capacityCase = capacityCase
+        )
+    }
+
+    private fun IncomingSnapshotScheduleResponse.toDomainModel(): IncomingSchedule {
+        val quantity = quantity
+        return IncomingSchedule(
+            id = id,
+            warehouseId = warehouseId,
+            warehouseName = warehouse?.name,
+            slipNumber = slipNumber,
+            orderSource = orderSource,
+            orderSourceLabel = orderSourceLabel,
+            inspectionPolicy = inspectionPolicy,
+            isEosSent = isEosSent,
+            orderDate = orderDate,
+            contractorId = contractor?.id,
+            contractorName = contractor?.name,
+            expectedQuantity = quantity?.expectedQuantity ?: 0,
+            receivedQuantity = quantity?.receivedQuantity ?: 0,
+            remainingQuantity = quantity?.remainingQuantity ?: 0,
+            expectedPieceQuantity = quantity?.expectedPieceQuantity,
+            receivedPieceQuantity = quantity?.receivedPieceQuantity,
+            remainingPieceQuantity = quantity?.remainingPieceQuantity,
+            capacityCase = quantity?.capacityCase ?: item?.capacityCase,
+            quantityType = IncomingQuantityType.fromString(quantity?.quantityType),
+            expectedArrivalDate = expectedArrivalDate,
+            status = IncomingScheduleStatus.fromString(status),
+            location = location?.toDomainModel()
+        )
+    }
+
+    private fun ItemQuantityCodeResponse.toIncomingItemQuantityCode(): IncomingItemQuantityCode {
+        return IncomingItemQuantityCode(
+            productCode = productCode,
+            ownCode = ownCode,
+            quantityCode = quantityCode,
+            quantity = quantity
+        )
+    }
+
     private fun IncomingProductResponse.toDomainModel(): IncomingProduct {
         return IncomingProduct(
             itemId = itemId,
@@ -407,9 +597,14 @@ class IncomingRepositoryImpl @Inject constructor(
             id = id,
             warehouseId = warehouseId,
             warehouseName = warehouseName,
+            slipNumber = slipNumber,
+            orderDate = orderDate,
             expectedQuantity = expectedQuantity,
             receivedQuantity = receivedQuantity,
             remainingQuantity = remainingQuantity,
+            expectedPieceQuantity = expectedPieceQuantity,
+            receivedPieceQuantity = receivedPieceQuantity,
+            remainingPieceQuantity = remainingPieceQuantity,
             quantityType = IncomingQuantityType.fromString(quantityType),
             expectedArrivalDate = expectedArrivalDate,
             expirationDate = expirationDate,
@@ -559,6 +754,67 @@ class IncomingRepositoryImpl @Inject constructor(
             currentQuantity = currentQuantity,
             reservedQuantity = reservedQuantity,
             availableQuantity = availableQuantity
+        )
+    }
+
+    private fun IncomingInspectionBatchSyncData.toRequest(): IncomingInspectionBatchSyncRequest {
+        return IncomingInspectionBatchSyncRequest(
+            clientBatchUuid = clientBatchUuid,
+            warehouseId = warehouseId,
+            inspectionDate = inspectionDate,
+            inspectedAt = inspectedAt,
+            pickerId = pickerId,
+            deviceId = deviceId,
+            appVersion = appVersion,
+            details = details.map { it.toRequest() }
+        )
+    }
+
+    private fun IncomingInspectionDetailData.toRequest(): IncomingInspectionDetailRequest {
+        return IncomingInspectionDetailRequest(
+            clientLineUuid = clientLineUuid,
+            incomingScheduleId = incomingScheduleId,
+            itemId = itemId,
+            itemCode = itemCode,
+            itemName = itemName,
+            scannedCode = scannedCode,
+            slipNumber = slipNumber,
+            contractorId = contractorId,
+            locationId = locationId,
+            caseQuantity = caseQuantity,
+            pieceQuantity = pieceQuantity,
+            capacityCase = capacityCase,
+            totalPieceQuantity = totalPieceQuantity,
+            expirationDate = expirationDate,
+            inspectedAt = inspectedAt
+        )
+    }
+
+    private fun IncomingInspectionBatchSyncResponse.toDomainModel(): IncomingInspectionBatchSyncResult {
+        return IncomingInspectionBatchSyncResult(
+            status = batch.status,
+            totalDetailCount = batch.totalDetailCount,
+            successCount = batch.successCount,
+            historyOnlyCount = batch.historyOnlyCount,
+            reviewCount = batch.reviewCount,
+            errorCount = batch.errorCount,
+            details = details.map { it.toDomainModel() }
+        )
+    }
+
+    private fun IncomingInspectionDetailResponse.toDomainModel(): IncomingInspectionDetailSyncResult {
+        return IncomingInspectionDetailSyncResult(
+            clientLineUuid = clientLineUuid,
+            incomingScheduleId = incomingScheduleId,
+            itemId = itemId,
+            itemCode = itemCode,
+            itemName = itemName,
+            inspectionPolicy = inspectionPolicy,
+            resultStatus = resultStatus,
+            reviewReason = reviewReason,
+            inspectedTotalPieceQuantity = inspectedTotalPieceQuantity,
+            appliedPieceQuantity = appliedPieceQuantity,
+            shortagePieceQuantity = shortagePieceQuantity
         )
     }
 }

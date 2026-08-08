@@ -2,6 +2,8 @@ package biz.smt_life.android.feature.inbound.incoming
 
 import biz.smt_life.android.core.domain.model.IncomingProduct
 import biz.smt_life.android.core.domain.model.IncomingSchedule
+import biz.smt_life.android.core.domain.model.IncomingInspectionDetailData
+import biz.smt_life.android.core.domain.model.IncomingInspectionDetailSyncResult
 import biz.smt_life.android.core.domain.model.IncomingWarehouse
 import biz.smt_life.android.core.domain.model.IncomingWorkItem
 import biz.smt_life.android.core.domain.model.Location
@@ -21,12 +23,23 @@ data class IncomingState(
     val isLoadingWarehouses: Boolean = false,
 
     // Product list
+    val syncedProducts: List<IncomingProduct> = emptyList(),
+    val syncedLocations: List<Location> = emptyList(),
     val products: List<IncomingProduct> = emptyList(),
     val searchQuery: String = "",
     val selectedProductIndex: Int = 0,
     val workingScheduleIds: Set<Int> = emptySet(),
+    val hasSyncedIncomingData: Boolean = false,
+    val isSyncingIncomingData: Boolean = false,
+    val lastSyncedAt: String? = null,
+    val inspectionDate: String? = null,
+    val clientBatchUuid: String = java.util.UUID.randomUUID().toString(),
     val isLoadingProducts: Boolean = false,
     val isSearching: Boolean = false,
+    val pendingInspectionDetails: List<IncomingInspectionDetailData> = emptyList(),
+    val syncResultDetails: List<IncomingInspectionDetailSyncResult> = emptyList(),
+    val syncResultMessage: String? = null,
+    val isSyncingInspectionBatch: Boolean = false,
 
     // Schedule list (for selected product)
     val selectedProduct: IncomingProduct? = null,
@@ -39,6 +52,8 @@ data class IncomingState(
 
     // Input form fields
     val inputQuantity: String = "",
+    val inputCaseQuantity: String = "",
+    val inputPieceQuantity: String = "",
     val inputExpirationDate: String = "",
     val inputLocationSearch: String = "",
     val inputLocationId: Int? = null,

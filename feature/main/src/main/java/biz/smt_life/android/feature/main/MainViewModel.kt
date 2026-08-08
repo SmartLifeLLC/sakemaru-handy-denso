@@ -108,7 +108,7 @@ class MainViewModel @Inject constructor(
                     inventory = 0
                 )
                 val currentDate = getCurrentDate()
-                val appVersion = "Ver.1.3.0"
+                val appVersion = "Ver.1.4.0"
 
                 _uiState.value = MainUiState.Ready(
                     pickerCode = pickerCode,

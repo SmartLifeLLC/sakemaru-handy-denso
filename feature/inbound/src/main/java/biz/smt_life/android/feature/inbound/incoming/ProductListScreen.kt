@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -81,11 +83,22 @@ fun ProductListScreen(
         onScanStart = viewModel::prepareProductBarcodeScan
     )
 
+    LaunchedEffect(Unit) {
+        viewModel.ensureDefaultWarehouseSelected()
+    }
+
     // Show error message
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
             viewModel.clearError()
+        }
+    }
+
+    LaunchedEffect(state.successMessage) {
+        state.successMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearSuccess()
         }
     }
 
@@ -119,10 +132,10 @@ fun ProductListScreen(
         },
         bottomBar = {
             FunctionKeyBar(
-                f1 = FunctionKey("検索") { searchFocusRequester.requestFocus() },
+                f1 = FunctionKey("同期", viewModel::syncIncomingData),
                 f2 = FunctionKey("戻る", onNavigateBack),
-                f3 = FunctionKey("履歴", onNavigateToHistory),
-                f4 = null
+                f3 = FunctionKey("送信", viewModel::syncInspectionBatch),
+                f4 = FunctionKey("検索") { searchFocusRequester.requestFocus() }
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
@@ -133,8 +146,20 @@ fun ProductListScreen(
                 .padding(paddingValues)
                 .onKeyEvent { event ->
                     when (event.key) {
+                        Key.F1 -> {
+                            viewModel.syncIncomingData()
+                            true
+                        }
                         Key.F2 -> {
                             onNavigateBack()
+                            true
+                        }
+                        Key.F3 -> {
+                            viewModel.syncInspectionBatch()
+                            true
+                        }
+                        Key.F4 -> {
+                            searchFocusRequester.requestFocus()
                             true
                         }
                         Key.DirectionUp -> {
@@ -154,6 +179,17 @@ fun ProductListScreen(
                     }
                 }
         ) {
+            SyncStatusBar(
+                warehouseName = state.selectedWarehouse?.name,
+                hasSynced = state.hasSyncedIncomingData,
+                isSyncing = state.isSyncingIncomingData,
+                isSending = state.isSyncingInspectionBatch,
+                lastSyncedAt = state.lastSyncedAt,
+                pendingCount = state.pendingInspectionDetails.size,
+                syncResultMessage = state.syncResultMessage,
+                onSync = viewModel::syncIncomingData
+            )
+
             // Search bar
             SearchBar(
                 query = state.searchQuery,
@@ -183,6 +219,8 @@ fun ProductListScreen(
                         Text(
                             text = if (state.searchQuery.isNotEmpty()) {
                                 "検索結果がありません"
+                            } else if (!state.hasSyncedIncomingData) {
+                                "データ同期を押してください"
                             } else {
                                 "入庫予定がありません"
                             },
@@ -218,6 +256,74 @@ fun ProductListScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncStatusBar(
+    warehouseName: String?,
+    hasSynced: Boolean,
+    isSyncing: Boolean,
+    isSending: Boolean,
+    lastSyncedAt: String?,
+    pendingCount: Int,
+    syncResultMessage: String?,
+    onSync: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = warehouseName ?: "作業倉庫確認中",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = when {
+                        isSyncing -> "同期中..."
+                        isSending -> "送信中..."
+                        hasSynced -> "同期済: ${lastSyncedAt ?: "-"}"
+                        else -> "未同期"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = syncResultMessage ?: "未送信: ${pendingCount}件",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (pendingCount > 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Button(
+                onClick = {
+                    SoundUtils.playBeep()
+                    onSync()
+                },
+                enabled = warehouseName != null && !isSyncing && !isSending,
+                shape = MaterialTheme.shapes.small,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text(
+                    text = if (isSyncing) "同期中" else "データ同期",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
             }
         }
     }

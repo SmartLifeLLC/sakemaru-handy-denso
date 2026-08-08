@@ -1,7 +1,10 @@
 package biz.smt_life.android.feature.inbound.incoming
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import biz.smt_life.android.core.domain.model.IncomingInspectionBatchSyncData
+import biz.smt_life.android.core.domain.model.IncomingInspectionDetailData
 import biz.smt_life.android.core.domain.model.IncomingProduct
 import biz.smt_life.android.core.domain.model.IncomingSchedule
 import biz.smt_life.android.core.domain.model.IncomingWarehouse
@@ -21,7 +24,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import javax.inject.Inject
 
 /**
@@ -98,11 +104,64 @@ class IncomingViewModel @Inject constructor(
         _state.update {
             it.copy(
                 selectedWarehouse = warehouse,
+                syncedProducts = emptyList(),
+                syncedLocations = emptyList(),
                 products = emptyList(),
-                searchQuery = ""
+                searchQuery = "",
+                workingScheduleIds = emptySet(),
+                hasSyncedIncomingData = false,
+                lastSyncedAt = null,
+                inspectionDate = null,
+                clientBatchUuid = UUID.randomUUID().toString(),
+                pendingInspectionDetails = emptyList(),
+                syncResultDetails = emptyList(),
+                syncResultMessage = null
             )
         }
-        loadProducts()
+    }
+
+    /**
+     * Select the default work warehouse from the login session.
+     * Incoming no longer opens a dedicated warehouse list from the main menu.
+     */
+    fun ensureDefaultWarehouseSelected() {
+        val currentState = _state.value
+        if (currentState.selectedWarehouse != null || currentState.isLoadingWarehouses) return
+
+        val defaultWarehouseId = tokenManager.getDefaultWarehouseId()
+        if (defaultWarehouseId <= 0) {
+            _state.update { it.copy(errorMessage = "作業倉庫が未設定です。メイン画面で倉庫を選択してください。") }
+            return
+        }
+
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingWarehouses = true, errorMessage = null) }
+
+            repository.getWarehouses()
+                .onSuccess { warehouses ->
+                    val selectedWarehouse = warehouses.firstOrNull { it.id == defaultWarehouseId }
+                    _state.update {
+                        it.copy(
+                            isLoadingWarehouses = false,
+                            warehouses = warehouses,
+                            selectedWarehouse = selectedWarehouse,
+                            errorMessage = if (selectedWarehouse == null) {
+                                "選択中の倉庫が入庫処理で利用できません。メイン画面で倉庫を選択し直してください。"
+                            } else {
+                                null
+                            }
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            isLoadingWarehouses = false,
+                            errorMessage = mapErrorMessage(error)
+                        )
+                    }
+                }
+        }
     }
 
     // ============================================================
@@ -113,31 +172,56 @@ class IncomingViewModel @Inject constructor(
      * Load products for the selected warehouse.
      */
     fun loadProducts() {
-        val warehouseId = _state.value.selectedWarehouse?.id ?: return
-        val pickerId = _state.value.pickerId ?: return
+        syncIncomingData()
+    }
 
+    /**
+     * Download the current incoming work data for the selected warehouse.
+     */
+    fun syncIncomingData() {
+        val warehouseId = _state.value.selectedWarehouse?.id
+        if (warehouseId == null) {
+            _state.update { it.copy(errorMessage = "作業倉庫が選択されていません。") }
+            return
+        }
         viewModelScope.launch {
-            _state.update { it.copy(isLoadingProducts = true, errorMessage = null) }
+            _state.update {
+                it.copy(
+                    isSyncingIncomingData = true,
+                    isLoadingProducts = true,
+                    errorMessage = null
+                )
+            }
 
-            // Load products and working schedule IDs in parallel
-            val productsResult = repository.getSchedules(warehouseId, null)
-            val workingIdsResult = repository.getWorkingScheduleIds(warehouseId, pickerId)
+            val inspectionDate = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+            val snapshotResult = repository.getIncomingSnapshot(warehouseId, inspectionDate)
 
-            productsResult
-                .onSuccess { products ->
-                    val workingIds = workingIdsResult.getOrDefault(emptySet())
+            snapshotResult
+                .onSuccess { snapshot ->
                     _state.update {
                         it.copy(
+                            isSyncingIncomingData = false,
                             isLoadingProducts = false,
-                            products = products,
-                            workingScheduleIds = workingIds,
-                            selectedProductIndex = 0
+                            syncedProducts = snapshot.products,
+                            syncedLocations = snapshot.locations,
+                            products = filterProducts(snapshot.products, it.searchQuery),
+                            workingScheduleIds = emptySet(),
+                            hasSyncedIncomingData = true,
+                            inspectionDate = snapshot.inspectionDate,
+                            clientBatchUuid = UUID.randomUUID().toString(),
+                            pendingInspectionDetails = emptyList(),
+                            syncResultDetails = emptyList(),
+                            syncResultMessage = null,
+                            lastSyncedAt = LocalDateTime.now().format(SYNCED_AT_FORMATTER),
+                            selectedProductIndex = 0,
+                            successMessage = "入庫データを同期しました"
                         )
                     }
                 }
                 .onFailure { error ->
                     _state.update {
                         it.copy(
+                            isSyncingIncomingData = false,
                             isLoadingProducts = false,
                             errorMessage = mapErrorMessage(error)
                         )
@@ -167,34 +251,22 @@ class IncomingViewModel @Inject constructor(
                 delay(300) // Debounce 300ms
             }
 
-            val warehouseId = _state.value.selectedWarehouse?.id ?: return@launch
-            val pickerId = _state.value.pickerId ?: return@launch
-
-            _state.update { it.copy(isSearching = true) }
-
-            repository.getSchedules(warehouseId, query.ifBlank { null })
-                .onSuccess { products ->
-                    val workingIdsResult = repository.getWorkingScheduleIds(warehouseId, pickerId)
-                    val workingIds = workingIdsResult.getOrDefault(emptySet())
-                    _state.update {
-                        it.copy(
-                            isSearching = false,
-                            products = products,
-                            workingScheduleIds = workingIds,
-                            selectedProductIndex = 0,
-                            searchQuery = if (clearQueryAfterSearch) "" else it.searchQuery
-                        )
-                    }
+            _state.update {
+                if (!it.hasSyncedIncomingData) {
+                    it.copy(
+                        isSearching = false,
+                        products = emptyList(),
+                        searchQuery = if (clearQueryAfterSearch) "" else it.searchQuery
+                    )
+                } else {
+                    it.copy(
+                        isSearching = false,
+                        products = filterProducts(it.syncedProducts, query),
+                        selectedProductIndex = 0,
+                        searchQuery = if (clearQueryAfterSearch) "" else it.searchQuery
+                    )
                 }
-                .onFailure { error ->
-                    _state.update {
-                        it.copy(
-                            isSearching = false,
-                            errorMessage = mapErrorMessage(error),
-                            searchQuery = if (clearQueryAfterSearch) "" else it.searchQuery
-                        )
-                    }
-                }
+            }
         }
     }
 
@@ -319,15 +391,19 @@ class IncomingViewModel @Inject constructor(
      * Prepare input screen for a schedule.
      */
     private fun prepareInputForSchedule(schedule: IncomingSchedule, isFromHistory: Boolean, workItem: IncomingWorkItem? = null) {
-        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+        val capacityCase = schedule.capacityCase ?: _state.value.selectedProduct?.capacityCase
+        val inputTotal = workItem?.workQuantity
+            ?: if (schedule.isUnplanned) 0 else schedule.remainingPieceQuantity ?: schedule.remainingQuantity
+        val (caseQuantity, pieceQuantity) = splitCasePiece(inputTotal, capacityCase)
 
         _state.update {
             it.copy(
                 selectedSchedule = schedule,
                 currentWorkItem = workItem,
                 isFromHistory = isFromHistory,
-                inputQuantity = workItem?.workQuantity?.toString()
-                    ?: schedule.remainingQuantity.toString(),
+                inputQuantity = inputTotal.toString(),
+                inputCaseQuantity = caseQuantity.toString(),
+                inputPieceQuantity = pieceQuantity.toString(),
                 inputExpirationDate = workItem?.workExpirationDate
                     ?: schedule.expirationDate
                     ?: "",
@@ -352,6 +428,14 @@ class IncomingViewModel @Inject constructor(
         // Only allow digits
         val filtered = value.filter { it.isDigit() }
         _state.update { it.copy(inputQuantity = filtered) }
+    }
+
+    fun onCaseQuantityChange(value: String) {
+        _state.update { it.copy(inputCaseQuantity = value.filter { char -> char.isDigit() }) }
+    }
+
+    fun onPieceQuantityChange(value: String) {
+        _state.update { it.copy(inputPieceQuantity = value.filter { char -> char.isDigit() }) }
     }
 
     /**
@@ -391,9 +475,32 @@ class IncomingViewModel @Inject constructor(
         locationSearchJob = viewModelScope.launch {
             delay(300) // Debounce 300ms
 
-            val warehouseId = _state.value.selectedWarehouse?.id ?: return@launch
-
             _state.update { it.copy(isLoadingLocations = true) }
+
+            if (_state.value.hasSyncedIncomingData) {
+                val normalizedQuery = query.normalizeSearchKey()
+                val locations = _state.value.syncedLocations
+                    .filter { location ->
+                        listOfNotNull(
+                            location.code1,
+                            location.code2,
+                            location.code3,
+                            location.name,
+                            location.displayName,
+                            location.fullDisplayName
+                        ).any { it.normalizeSearchKey().contains(normalizedQuery) }
+                    }
+                    .take(20)
+                _state.update {
+                    it.copy(
+                        isLoadingLocations = false,
+                        locationSuggestions = locations
+                    )
+                }
+                return@launch
+            }
+
+            val warehouseId = _state.value.selectedWarehouse?.id ?: return@launch
 
             repository.searchLocations(warehouseId, query, 20)
                 .onSuccess { locations ->
@@ -436,7 +543,16 @@ class IncomingViewModel @Inject constructor(
      */
     fun setQuantityToExpected() {
         val schedule = _state.value.selectedSchedule ?: return
-        _state.update { it.copy(inputQuantity = schedule.remainingQuantity.toString()) }
+        val capacityCase = schedule.capacityCase ?: _state.value.selectedProduct?.capacityCase
+        val total = schedule.remainingPieceQuantity ?: schedule.remainingQuantity
+        val (caseQuantity, pieceQuantity) = splitCasePiece(total, capacityCase)
+        _state.update {
+            it.copy(
+                inputQuantity = total.toString(),
+                inputCaseQuantity = caseQuantity.toString(),
+                inputPieceQuantity = pieceQuantity.toString()
+            )
+        }
     }
 
     /**
@@ -444,10 +560,28 @@ class IncomingViewModel @Inject constructor(
      */
     fun canSubmit(): Boolean {
         val state = _state.value
+        if (state.hasSyncedIncomingData) {
+            return calculateInputTotalPieceQuantity(state) > 0
+        }
+
         val quantity = state.inputQuantity.toIntOrNull() ?: 0
         val maxQuantity = state.selectedSchedule?.remainingQuantity ?: 0
 
         return quantity > 0 && quantity <= maxQuantity
+    }
+
+    fun quantityWarningMessage(): String? {
+        val state = _state.value
+        val schedule = state.selectedSchedule ?: return null
+        if (!state.hasSyncedIncomingData || schedule.isUnplanned) return null
+
+        val total = calculateInputTotalPieceQuantity(state)
+        val remaining = schedule.remainingPieceQuantity ?: schedule.remainingQuantity
+        return if (total > remaining && remaining > 0) {
+            "予定数を超えています。送信時にWMSで超過入荷として判定されます。"
+        } else {
+            null
+        }
     }
 
     /**
@@ -456,6 +590,11 @@ class IncomingViewModel @Inject constructor(
      */
     fun submitEntry(onSuccess: () -> Unit) {
         val state = _state.value
+        if (state.hasSyncedIncomingData) {
+            submitInspectionDetail(onSuccess)
+            return
+        }
+
         val schedule = state.selectedSchedule ?: return
         val warehouseId = state.selectedWarehouse?.id ?: return
         val pickerId = state.pickerId ?: return
@@ -559,6 +698,115 @@ class IncomingViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    private fun submitInspectionDetail(onSuccess: () -> Unit) {
+        val state = _state.value
+        val product = state.selectedProduct ?: return
+        val schedule = state.selectedSchedule ?: return
+        val capacityCase = schedule.capacityCase ?: product.capacityCase
+        val caseQuantity = state.inputCaseQuantity.toIntOrNull() ?: 0
+        val pieceQuantity = state.inputPieceQuantity.toIntOrNull() ?: 0
+        val totalPieceQuantity = calculateInputTotalPieceQuantity(state)
+
+        if (totalPieceQuantity <= 0) {
+            _state.update { it.copy(errorMessage = "1以上の数量を入力してください。") }
+            return
+        }
+
+        val detail = IncomingInspectionDetailData(
+            clientLineUuid = UUID.randomUUID().toString(),
+            incomingScheduleId = schedule.id.takeUnless { schedule.isUnplanned },
+            itemId = product.itemId,
+            itemCode = product.itemCode,
+            itemName = product.itemName,
+            scannedCode = product.primaryJanCode ?: product.searchCodes.firstOrNull(),
+            slipNumber = schedule.slipNumber,
+            contractorId = schedule.contractorId,
+            locationId = state.inputLocationId ?: schedule.location?.id ?: product.defaultLocation?.id,
+            caseQuantity = caseQuantity,
+            pieceQuantity = pieceQuantity,
+            capacityCase = capacityCase,
+            totalPieceQuantity = totalPieceQuantity,
+            expirationDate = state.inputExpirationDate.ifBlank { null },
+            inspectedAt = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        )
+
+        _state.update {
+            it.copy(
+                pendingInspectionDetails = it.pendingInspectionDetails + detail,
+                isSubmitting = false,
+                successMessage = if (schedule.isUnplanned) {
+                    "予定なし入荷として検品データに追加しました"
+                } else {
+                    "検品データに追加しました"
+                },
+                selectedSchedule = null
+            )
+        }
+        onSuccess()
+    }
+
+    fun syncInspectionBatch() {
+        val state = _state.value
+        val warehouseId = state.selectedWarehouse?.id
+        val inspectionDate = state.inspectionDate ?: LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+
+        if (warehouseId == null) {
+            _state.update { it.copy(errorMessage = "作業倉庫が選択されていません。") }
+            return
+        }
+
+        if (state.pendingInspectionDetails.isEmpty()) {
+            _state.update { it.copy(errorMessage = "未送信の検品データがありません。") }
+            return
+        }
+
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    isSyncingInspectionBatch = true,
+                    errorMessage = null,
+                    syncResultMessage = null
+                )
+            }
+
+            val result = repository.syncIncomingInspectionBatch(
+                IncomingInspectionBatchSyncData(
+                    clientBatchUuid = state.clientBatchUuid,
+                    warehouseId = warehouseId,
+                    inspectionDate = inspectionDate,
+                    inspectedAt = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                    pickerId = state.pickerId?.takeIf { it > 0 },
+                    deviceId = getDeviceSerial(),
+                    appVersion = APP_VERSION,
+                    details = state.pendingInspectionDetails
+                )
+            )
+
+            result
+                .onSuccess { syncResult ->
+                    val message = "送信完了 成功:${syncResult.successCount} 履歴のみ:${syncResult.historyOnlyCount} 要確認:${syncResult.reviewCount} エラー:${syncResult.errorCount}"
+                    _state.update {
+                        it.copy(
+                            isSyncingInspectionBatch = false,
+                            pendingInspectionDetails = emptyList(),
+                            clientBatchUuid = UUID.randomUUID().toString(),
+                            syncResultDetails = syncResult.details,
+                            syncResultMessage = message,
+                            successMessage = message
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            isSyncingInspectionBatch = false,
+                            errorMessage = mapErrorMessage(error)
+                        )
+                    }
+                }
         }
     }
 
@@ -710,6 +958,8 @@ class IncomingViewModel @Inject constructor(
                 currentWorkItem = null,
                 isFromHistory = false,
                 inputQuantity = "",
+                inputCaseQuantity = "",
+                inputPieceQuantity = "",
                 inputExpirationDate = "",
                 inputLocationSearch = "",
                 inputLocationId = null,
@@ -732,5 +982,56 @@ class IncomingViewModel @Inject constructor(
             is NetworkException.ValidationError -> error.message ?: "入力エラーです。"
             else -> error.message ?: "エラーが発生しました。"
         }
+    }
+
+    private fun filterProducts(products: List<IncomingProduct>, query: String): List<IncomingProduct> {
+        val normalizedQuery = query.normalizeSearchKey()
+        if (normalizedQuery.isBlank()) return products
+
+        return products.filter { product ->
+            product.itemCode.normalizeSearchKey().contains(normalizedQuery) ||
+                product.itemName.normalizeSearchKey().contains(normalizedQuery) ||
+                product.searchCode?.normalizeSearchKey()?.contains(normalizedQuery) == true ||
+                product.janCodes.any { it.normalizeSearchKey().contains(normalizedQuery) } ||
+                product.searchCodes.any { it.normalizeSearchKey().contains(normalizedQuery) } ||
+                product.itemQuantityCodes.any { quantityCode ->
+                    listOfNotNull(
+                        quantityCode.productCode,
+                        quantityCode.ownCode,
+                        quantityCode.quantityCode
+                    ).any { it.normalizeSearchKey().contains(normalizedQuery) }
+                }
+        }
+    }
+
+    private fun String.normalizeSearchKey(): String {
+        return trim().lowercase()
+    }
+
+    private fun calculateInputTotalPieceQuantity(state: IncomingState): Int {
+        val capacityCase = state.selectedSchedule?.capacityCase
+            ?: state.selectedProduct?.capacityCase
+            ?: 1
+        val caseQuantity = state.inputCaseQuantity.toIntOrNull() ?: 0
+        val pieceQuantity = state.inputPieceQuantity.toIntOrNull() ?: 0
+        return caseQuantity * capacityCase + pieceQuantity
+    }
+
+    private fun splitCasePiece(totalPieceQuantity: Int, capacityCase: Int?): Pair<Int, Int> {
+        val capacity = capacityCase?.takeIf { it > 1 } ?: return 0 to totalPieceQuantity
+        return totalPieceQuantity / capacity to totalPieceQuantity % capacity
+    }
+
+    @Suppress("DEPRECATION")
+    private fun getDeviceSerial(): String {
+        return Build.SERIAL
+            ?.takeIf { it.isNotBlank() && it != Build.UNKNOWN }
+            ?: Build.MODEL
+            ?: "unknown"
+    }
+
+    private companion object {
+        const val APP_VERSION = "1.4.0"
+        val SYNCED_AT_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     }
 }

@@ -114,8 +114,8 @@ fun HandyNavHost(
                     navController.navigate(Routes.Inbound.route)
                 },
                 onNavigateToInboundWebView = { authKey, warehouseId ->
-                    // Navigate to native incoming warehouse selection instead of WebView
-                    navController.navigate(Routes.IncomingWarehouseSelection.route) {
+                    // Navigate directly to the selected/default warehouse incoming flow.
+                    navController.navigate(Routes.IncomingProductList.route) {
                         launchSingleTop = true
                     }
                 },
@@ -177,10 +177,7 @@ fun HandyNavHost(
         }
 
         composable(Routes.IncomingProductList.route) { backStackEntry ->
-            val parentEntry = remember(backStackEntry) {
-                navController.getBackStackEntry(Routes.IncomingWarehouseSelection.route)
-            }
-            val incomingViewModel: IncomingViewModel = hiltViewModel(parentEntry)
+            val incomingViewModel: IncomingViewModel = hiltViewModel(backStackEntry)
 
             ProductListScreen(
                 onNavigateBack = {
@@ -199,7 +196,7 @@ fun HandyNavHost(
 
         composable(Routes.IncomingScheduleList.route) { backStackEntry ->
             val parentEntry = remember(backStackEntry) {
-                navController.getBackStackEntry(Routes.IncomingWarehouseSelection.route)
+                navController.getBackStackEntry(Routes.IncomingProductList.route)
             }
             val incomingViewModel: IncomingViewModel = hiltViewModel(parentEntry)
 
@@ -219,7 +216,7 @@ fun HandyNavHost(
 
         composable(Routes.IncomingInput.route) { backStackEntry ->
             val parentEntry = remember(backStackEntry) {
-                navController.getBackStackEntry(Routes.IncomingWarehouseSelection.route)
+                navController.getBackStackEntry(Routes.IncomingProductList.route)
             }
             val incomingViewModel: IncomingViewModel = hiltViewModel(parentEntry)
 
@@ -238,7 +235,7 @@ fun HandyNavHost(
 
         composable(Routes.IncomingHistory.route) { backStackEntry ->
             val parentEntry = remember(backStackEntry) {
-                navController.getBackStackEntry(Routes.IncomingWarehouseSelection.route)
+                navController.getBackStackEntry(Routes.IncomingProductList.route)
             }
             val incomingViewModel: IncomingViewModel = hiltViewModel(parentEntry)
 

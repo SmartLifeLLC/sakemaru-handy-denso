@@ -42,6 +42,15 @@ data class Location(
         get() = displayName ?: listOfNotNull(code1, code2, code3).joinToString("-")
 }
 
+data class IncomingSnapshot(
+    val inspectionDate: String,
+    val generatedAt: String? = null,
+    val warehouse: IncomingWarehouse? = null,
+    val matchingWarehouseIds: List<Int> = emptyList(),
+    val products: List<IncomingProduct> = emptyList(),
+    val locations: List<Location> = emptyList()
+)
+
 // ============================================================
 // Incoming Product (Product with schedules)
 // ============================================================
@@ -54,6 +63,8 @@ data class IncomingProduct(
     val itemCode: String,
     val itemName: String,
     val searchCode: String? = null,
+    val searchCodes: List<String> = emptyList(),
+    val itemQuantityCodes: List<IncomingItemQuantityCode> = emptyList(),
     val janCodes: List<String> = emptyList(),
     val volume: String? = null,
     val volumeUnit: String? = null,
@@ -102,6 +113,13 @@ data class IncomingWarehouseSummary(
     val remainingQuantity: Int = 0
 )
 
+data class IncomingItemQuantityCode(
+    val productCode: String? = null,
+    val ownCode: String? = null,
+    val quantityCode: String? = null,
+    val quantity: Int? = null
+)
+
 // ============================================================
 // Incoming Schedule
 // ============================================================
@@ -147,9 +165,22 @@ data class IncomingSchedule(
     val id: Int,
     val warehouseId: Int,
     val warehouseName: String? = null,
+    val isUnplanned: Boolean = false,
+    val slipNumber: String? = null,
+    val orderSource: String? = null,
+    val orderSourceLabel: String? = null,
+    val inspectionPolicy: String? = null,
+    val isEosSent: Boolean = false,
+    val orderDate: String? = null,
+    val contractorId: Int? = null,
+    val contractorName: String? = null,
     val expectedQuantity: Int = 0,
     val receivedQuantity: Int = 0,
     val remainingQuantity: Int = 0,
+    val expectedPieceQuantity: Int? = null,
+    val receivedPieceQuantity: Int? = null,
+    val remainingPieceQuantity: Int? = null,
+    val capacityCase: Int? = null,
     val quantityType: IncomingQuantityType = IncomingQuantityType.PIECE,
     val expectedArrivalDate: String? = null,
     val expirationDate: String? = null,
@@ -286,4 +317,57 @@ data class UpdateWorkItemData(
     val workArrivalDate: String? = null,
     val workExpirationDate: String? = null,
     val locationId: Int? = null
+)
+
+data class IncomingInspectionBatchSyncData(
+    val clientBatchUuid: String,
+    val warehouseId: Int,
+    val inspectionDate: String,
+    val inspectedAt: String? = null,
+    val pickerId: Int? = null,
+    val deviceId: String? = null,
+    val appVersion: String? = null,
+    val details: List<IncomingInspectionDetailData>
+)
+
+data class IncomingInspectionDetailData(
+    val clientLineUuid: String,
+    val incomingScheduleId: Int? = null,
+    val itemId: Int? = null,
+    val itemCode: String? = null,
+    val itemName: String? = null,
+    val scannedCode: String? = null,
+    val slipNumber: String? = null,
+    val contractorId: Int? = null,
+    val locationId: Int? = null,
+    val caseQuantity: Int = 0,
+    val pieceQuantity: Int = 0,
+    val capacityCase: Int? = null,
+    val totalPieceQuantity: Int,
+    val expirationDate: String? = null,
+    val inspectedAt: String? = null
+)
+
+data class IncomingInspectionBatchSyncResult(
+    val status: String,
+    val totalDetailCount: Int = 0,
+    val successCount: Int = 0,
+    val historyOnlyCount: Int = 0,
+    val reviewCount: Int = 0,
+    val errorCount: Int = 0,
+    val details: List<IncomingInspectionDetailSyncResult> = emptyList()
+)
+
+data class IncomingInspectionDetailSyncResult(
+    val clientLineUuid: String,
+    val incomingScheduleId: Int? = null,
+    val itemId: Int? = null,
+    val itemCode: String? = null,
+    val itemName: String? = null,
+    val inspectionPolicy: String? = null,
+    val resultStatus: String,
+    val reviewReason: String? = null,
+    val inspectedTotalPieceQuantity: Int = 0,
+    val appliedPieceQuantity: Int = 0,
+    val shortagePieceQuantity: Int = 0
 )
