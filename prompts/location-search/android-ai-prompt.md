@@ -45,6 +45,7 @@ Accept: application/json
 - 0件の場合は「該当商品なし」を表示する。
 - `stock.status` を画面上で判別できるようにする。
 - `locations.suggested` を推奨ロケとして最上段に表示する。
+- `locations.suggested.is_no_location == true` の場合は、推奨ロケの大表示を `code` ではなく「フリーロケ」にする。登録や後続処理では `id` と `code` は実在ロケーションの値として扱う。
 - `locations.stock` を在庫ロケ一覧として表示し、ロケ別の `available_quantity` を表示する。
 
 ## 画面構成

@@ -2,6 +2,7 @@ package biz.smt_life.android.feature.inbound.locationsearch
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import biz.smt_life.android.core.designsystem.util.SoundUtils
 import biz.smt_life.android.core.domain.repository.IncomingRepository
 import biz.smt_life.android.core.network.NetworkException
 import biz.smt_life.android.core.ui.TokenManager
@@ -25,6 +26,7 @@ class LocationSearchViewModel @Inject constructor(
     val state: StateFlow<LocationSearchState> = _state.asStateFlow()
 
     private var searchJob: Job? = null
+    private var scanAutoSearchJob: Job? = null
 
     init {
         val defaultWarehouseId = tokenManager.getDefaultWarehouseId().takeIf { it > 0 }
@@ -33,31 +35,45 @@ class LocationSearchViewModel @Inject constructor(
     }
 
     fun onQueryChange(query: String) {
-        _state.update { it.copy(query = query) }
-        searchJob?.cancel()
+        val current = _state.value.query
+        val added = query.length - current.length
 
-        if (query.isBlank()) {
-            _state.update {
-                it.copy(
-                    results = emptyList(),
-                    selectedIndex = 0,
-                    hasSearched = false,
-                    errorMessage = null
-                )
+        // スキャナー検知: 一度に4文字以上増えた → バーコード一括入力
+        if (added >= 4) {
+            val newValue = if (current.isNotEmpty() && query.startsWith(current)) {
+                query.substring(current.length)
+            } else {
+                query
+            }
+            _state.update { it.copy(query = newValue) }
+            scanAutoSearchJob?.cancel()
+            scanAutoSearchJob = viewModelScope.launch {
+                delay(200)
+                SoundUtils.playBeep()
+                searchJob?.cancel()
+                search(newValue, clearQueryAfterSearch = true)
             }
             return
         }
 
-        searchJob = viewModelScope.launch {
-            delay(250)
-            search(query)
-        }
+        _state.update { it.copy(query = query) }
     }
 
     fun onScan(value: String) {
         _state.update { it.copy(query = value) }
         searchJob?.cancel()
-        search(value)
+        search(value, clearQueryAfterSearch = true)
+    }
+
+    fun prepareForScan() {
+        searchJob?.cancel()
+        _state.update {
+            it.copy(
+                query = "",
+                isLoading = false,
+                errorMessage = null
+            )
+        }
     }
 
     fun searchNow() {
@@ -86,7 +102,10 @@ class LocationSearchViewModel @Inject constructor(
         _state.update { it.copy(errorMessage = null) }
     }
 
-    private fun search(rawQuery: String) {
+    private fun search(
+        rawQuery: String,
+        clearQueryAfterSearch: Boolean = false
+    ) {
         val warehouseId = _state.value.warehouseId
         val query = rawQuery.trim()
 
@@ -101,6 +120,8 @@ class LocationSearchViewModel @Inject constructor(
                 it.copy(
                     isLoading = true,
                     hasSearched = true,
+                    results = emptyList(),
+                    selectedIndex = 0,
                     errorMessage = null
                 )
             }
@@ -111,7 +132,8 @@ class LocationSearchViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             results = results,
-                            selectedIndex = 0
+                            selectedIndex = 0,
+                            query = if (clearQueryAfterSearch) "" else it.query
                         )
                     }
                 }
@@ -121,7 +143,8 @@ class LocationSearchViewModel @Inject constructor(
                             isLoading = false,
                             results = emptyList(),
                             selectedIndex = 0,
-                            errorMessage = mapErrorMessage(error)
+                            errorMessage = mapErrorMessage(error),
+                            query = if (clearQueryAfterSearch) "" else it.query
                         )
                     }
                 }

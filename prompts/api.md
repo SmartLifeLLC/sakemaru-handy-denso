@@ -272,6 +272,7 @@
 | `result.data[].stock.reserved_quantity` | integer | 指定倉庫の引当済数 |
 | `result.data[].stock.available_quantity` | integer | 指定倉庫の引当可能数 |
 | `result.data[].locations.suggested` | object|null | 推奨ロケ。商品デフォルト、在庫ロケ、倉庫デフォルトの順 |
+| `result.data[].locations.suggested.is_no_location` | boolean | trueの場合はロケ未確定。Androidでは大表示を「フリーロケ」にする |
 | `result.data[].locations.default` | object|null | 商品×倉庫のデフォルトロケ |
 | `result.data[].locations.stock` | object[] | 指定倉庫で在庫ロットがあるロケ一覧 |
 

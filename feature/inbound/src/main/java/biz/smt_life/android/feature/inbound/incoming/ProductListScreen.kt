@@ -8,10 +8,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -21,7 +24,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -33,8 +39,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +55,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,6 +63,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import biz.smt_life.android.core.designsystem.util.SoundUtils
 import biz.smt_life.android.core.domain.model.IncomingProduct
+import biz.smt_life.android.core.ui.ScanKeyHandler
 
 /**
  * Product List Screen for Incoming feature.
@@ -75,12 +82,40 @@ fun ProductListScreen(
     val searchFocusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
 
+    ScanKeyHandler(
+        onScan = viewModel::onProductBarcodeScan,
+        onScanStart = viewModel::prepareProductBarcodeScan
+    )
+
+    LaunchedEffect(Unit) {
+        viewModel.ensureDefaultWarehouseSelected()
+    }
+
     // Show error message
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
             viewModel.clearError()
         }
+    }
+
+    LaunchedEffect(state.successMessage) {
+        state.successMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearSuccess()
+        }
+    }
+
+    if (state.showItemMasterRefreshPrompt) {
+        ItemMasterRefreshDialog(
+            searchCode = state.pendingItemMasterRefreshCode ?: state.searchQuery,
+            isSyncing = state.isSyncingItemMaster,
+            onRefresh = {
+                SoundUtils.playBeep()
+                viewModel.refreshItemMasterForMissingProduct()
+            },
+            onDismiss = viewModel::dismissItemMasterRefreshPrompt
+        )
     }
 
     // Scroll to selected item
@@ -92,31 +127,17 @@ fun ProductListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "${state.selectedWarehouse?.name ?: ""} 入庫処理",
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+            IncomingCompactTopBar(
+                title = "${state.selectedWarehouse?.name ?: ""} 入庫処理",
+                onNavigateBack = onNavigateBack
             )
         },
         bottomBar = {
             FunctionKeyBar(
-                f1 = FunctionKey("検索") { searchFocusRequester.requestFocus() },
+                f1 = FunctionKey("同期", viewModel::syncIncomingData),
                 f2 = FunctionKey("戻る", onNavigateBack),
-                f3 = FunctionKey("履歴", onNavigateToHistory),
-                f4 = null
+                f3 = FunctionKey("送信", viewModel::syncInspectionBatch),
+                f4 = FunctionKey("検索") { searchFocusRequester.requestFocus() }
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
@@ -127,8 +148,20 @@ fun ProductListScreen(
                 .padding(paddingValues)
                 .onKeyEvent { event ->
                     when (event.key) {
+                        Key.F1 -> {
+                            viewModel.syncIncomingData()
+                            true
+                        }
                         Key.F2 -> {
                             onNavigateBack()
+                            true
+                        }
+                        Key.F3 -> {
+                            viewModel.syncInspectionBatch()
+                            true
+                        }
+                        Key.F4 -> {
+                            searchFocusRequester.requestFocus()
                             true
                         }
                         Key.DirectionUp -> {
@@ -141,13 +174,30 @@ fun ProductListScreen(
                         }
                         Key.Enter -> {
                             val product = viewModel.selectCurrentProduct()
-                            if (product != null) onProductSelected()
+                            if (product != null) {
+                                onProductSelected()
+                            } else {
+                                viewModel.promptItemMasterRefreshIfSearchMissing()
+                            }
                             true
                         }
                         else -> false
                     }
                 }
         ) {
+            SyncStatusBar(
+                warehouseName = state.selectedWarehouse?.name,
+                hasSynced = state.hasSyncedIncomingData,
+                isSyncing = state.isSyncingIncomingData,
+                isSending = state.isSyncingInspectionBatch,
+                isSyncingItemMaster = state.isSyncingItemMaster,
+                lastSyncedAt = state.lastSyncedAt,
+                itemMasterSyncedDate = state.itemMasterSyncedDate,
+                pendingCount = state.pendingInspectionDetails.size,
+                syncResultMessage = state.syncResultMessage,
+                onSync = viewModel::syncIncomingData
+            )
+
             // Search bar
             SearchBar(
                 query = state.searchQuery,
@@ -176,7 +226,9 @@ fun ProductListScreen(
                     ) {
                         Text(
                             text = if (state.searchQuery.isNotEmpty()) {
-                                "検索結果がありません"
+                                "商品が見つかりません。Enterで最新マスタを確認できます。"
+                            } else if (!state.hasSyncedIncomingData) {
+                                "データ同期を押してください"
                             } else {
                                 "入庫予定がありません"
                             },
@@ -218,6 +270,150 @@ fun ProductListScreen(
 }
 
 @Composable
+private fun IncomingCompactTopBar(
+    title: String,
+    onNavigateBack: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onNavigateBack,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun ItemMasterRefreshDialog(
+    searchCode: String,
+    isSyncing: Boolean,
+    onRefresh: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("商品が見つかりません") },
+        text = {
+            Text(
+                text = "ローカルの商品マスタに「$searchCode」が見つかりません。最新マスタを取得しますか？"
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onRefresh,
+                enabled = !isSyncing
+            ) {
+                Text(if (isSyncing) "取得中" else "取得する")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isSyncing
+            ) {
+                Text("閉じる")
+            }
+        }
+    )
+}
+
+@Composable
+private fun SyncStatusBar(
+    warehouseName: String?,
+    hasSynced: Boolean,
+    isSyncing: Boolean,
+    isSending: Boolean,
+    isSyncingItemMaster: Boolean,
+    lastSyncedAt: String?,
+    itemMasterSyncedDate: String?,
+    pendingCount: Int,
+    syncResultMessage: String?,
+    onSync: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = warehouseName ?: "作業倉庫確認中",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = when {
+                        isSyncing -> "同期中..."
+                        isSyncingItemMaster -> "商品マスタ更新中..."
+                        isSending -> "送信中..."
+                        hasSynced -> "同期: ${lastSyncedAt ?: "-"} / マスタ: ${itemMasterSyncedDate ?: "-"}"
+                        else -> "未同期"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = syncResultMessage ?: "未送信: ${pendingCount}件",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (pendingCount > 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Button(
+                onClick = {
+                    SoundUtils.playBeep()
+                    onSync()
+                },
+                modifier = Modifier
+                    .width(82.dp)
+                    .height(38.dp),
+                enabled = warehouseName != null && !isSyncing && !isSending && !isSyncingItemMaster,
+                shape = MaterialTheme.shapes.small,
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text(
+                    text = if (isSyncing || isSyncingItemMaster) "同期中" else "同期",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
@@ -228,8 +424,16 @@ private fun SearchBar(
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = modifier.focusRequester(focusRequester),
-        placeholder = { Text("JAN/商品コード/商品名") },
+        modifier = modifier
+            .height(52.dp)
+            .focusRequester(focusRequester),
+        placeholder = {
+            Text(
+                text = "JAN/商品CD/商品名",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
         leadingIcon = {
             Icon(Icons.Default.Search, contentDescription = null)
         },
@@ -237,12 +441,13 @@ private fun SearchBar(
             if (isSearching) {
                 CircularProgressIndicator(
                     modifier = Modifier
-                        .width(24.dp)
-                        .height(24.dp),
+                        .width(18.dp)
+                        .height(18.dp),
                     strokeWidth = 2.dp
                 )
             }
         },
+        textStyle = MaterialTheme.typography.bodyMedium,
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { /* Already debounced */ })
@@ -259,79 +464,119 @@ private fun ProductListItem(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 96.dp)
             .clickable(onClick = onClick),
         color = when {
-            isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
             isWorking -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
             else -> MaterialTheme.colorScheme.surface
         }
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth()
         ) {
-            // First row: JAN code and item code
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = product.primaryJanCode ?: "",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold
+            Box(
+                modifier = Modifier
+                    .width(6.dp)
+                    .fillMaxHeight()
+                    .background(
+                        when {
+                            isSelected -> MaterialTheme.colorScheme.primary
+                            isWorking -> MaterialTheme.colorScheme.tertiary
+                            else -> Color.Transparent
+                        }
                     )
-                )
-                Text(
-                    text = product.itemCode,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            // Second row: Item name
-            Text(
-                text = product.itemName,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.Bold
-                ),
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
             )
 
-            // Third row: Quantity info
-            if (product.totalRemainingQuantity > 0) {
-                Spacer(modifier = Modifier.height(2.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+            ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    QuantityBadge(
-                        label = "残",
-                        value = product.totalRemainingQuantity,
-                        color = MaterialTheme.colorScheme.tertiary
+                    Text(
+                        text = product.primaryJanCode ?: "",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
+                    Text(
+                        text = product.itemCode,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.width(86.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = product.itemName,
+                    fontSize = 19.sp,
+                    lineHeight = 23.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = buildProductSpecText(product),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (product.totalRemainingQuantity > 0) {
+                        QuantityBadge(
+                            label = "残総バラ",
+                            quantity = product.totalRemainingQuantity,
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+
                     if (product.totalReceivedQuantity > 0) {
                         QuantityBadge(
                             label = "済",
-                            value = product.totalReceivedQuantity,
-                            color = MaterialTheme.colorScheme.primary
+                            quantity = product.totalReceivedQuantity,
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+
+                    if (isWorking) {
+                        QuantityBadge(
+                            label = "作業中",
+                            quantity = null,
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
                 }
-            }
-
-            // Working indicator
-            if (isWorking) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "作業中",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary
-                )
             }
         }
     }
@@ -340,23 +585,27 @@ private fun ProductListItem(
 @Composable
 private fun QuantityBadge(
     label: String,
-    value: Int,
-    color: Color
+    quantity: Int?,
+    containerColor: Color,
+    contentColor: Color
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        color = containerColor,
+        contentColor = contentColor
     ) {
         Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = color
-        )
-        Text(
-            text = ": $value",
-            style = MaterialTheme.typography.labelMedium.copy(
-                fontWeight = FontWeight.Bold
-            ),
-            color = color
+            text = if (quantity == null) label else "$label $quantity",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            maxLines = 1
         )
     }
+}
+
+private fun buildProductSpecText(product: IncomingProduct): String {
+    val spec = product.packaging
+        ?.takeIf { it.isNotBlank() }
+        ?: "-"
+    return "規格 $spec"
 }

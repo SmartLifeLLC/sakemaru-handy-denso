@@ -24,6 +24,12 @@ sealed class Routes(val route: String) {
         fun createRoute(taskId: Int) = "picking_history/$taskId"
     }
 
+    // Outbound inspection routes (出庫検品)
+    object OutboundInspectionPeriod : Routes("outbound_inspection_period")
+    object OutboundInspectionCourse : Routes("outbound_inspection_course")
+    object OutboundInspectionFloor : Routes("outbound_inspection_floor")
+    object OutboundInspectionScan : Routes("outbound_inspection_scan")
+
     object SlipEntry : Routes("slip_entry")
 
     object Move : Routes("move")

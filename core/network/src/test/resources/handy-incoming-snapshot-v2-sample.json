@@ -1,0 +1,140 @@
+{
+  "is_success": true,
+  "code": "SUCCESS",
+  "result": {
+    "data": {
+      "version": "v2",
+      "generated_at": "2026-08-08T10:00:00+09:00",
+      "inspection_date": "2026-08-08",
+      "warehouse": {
+        "id": 91,
+        "code": "091",
+        "name": "華むすびの蔵センター"
+      },
+      "rules": {
+        "eos_inspection_policy": "HISTORY_ONLY",
+        "eos_confirmed_index_days": 3,
+        "unplanned_order_source": "APP_UNPLANNED",
+        "quantity_input": "CASE_AND_PIECE",
+        "matching_warehouse_ids": [91]
+      },
+      "schedules": [
+        {
+          "id": 94161,
+          "warehouse_id": 91,
+          "warehouse": {
+            "id": 91,
+            "code": "091",
+            "name": "華むすびの蔵センター"
+          },
+          "slip_number": "91461015689",
+          "order_source": "MANUAL",
+          "order_source_label": "通常入荷",
+          "inspection_policy": "APP_CONFIRM_ALLOWED",
+          "is_eos_sent": false,
+          "status": "PENDING",
+          "order_date": "2026-08-07",
+          "expected_arrival_date": "2026-08-08",
+          "contractor": {
+            "id": 1021,
+            "code": "C1021",
+            "name": "テスト仕入先"
+          },
+          "item": {
+            "id": 211119,
+            "code": "211119",
+            "name": "テスト商品 720ml",
+            "volume": "720",
+            "volume_unit": "ml",
+            "capacity_case": 12,
+            "search_codes": [
+              {
+                "code": "4901004201812",
+                "code_type": "JAN"
+              },
+              {
+                "code": "OLD4901004201812",
+                "code_type": "OTHER"
+              }
+            ],
+            "item_quantity_codes": [
+              {
+                "quantity_code": "6P",
+                "quantity": 6
+              }
+            ],
+            "default_location": {
+              "id": 12345,
+              "code1": "1F",
+              "code2": "A01",
+              "code3": "01",
+              "display_name": "1F-A01-01"
+            }
+          },
+          "location": {
+            "id": 12345,
+            "code1": "1F",
+            "code2": "A01",
+            "code3": "01",
+            "display_name": "1F-A01-01"
+          },
+          "quantity": {
+            "quantity_type": "PIECE",
+            "expected_quantity": 24,
+            "received_quantity": 0,
+            "remaining_quantity": 24,
+            "expected_piece_quantity": 24,
+            "received_piece_quantity": 0,
+            "remaining_piece_quantity": 24,
+            "capacity_case": 12
+          }
+        }
+      ],
+      "confirmed_eos_index": [],
+      "items": [
+        {
+          "id": 211119,
+          "code": "211119",
+          "name": "テスト商品 720ml",
+          "volume": "720",
+          "volume_unit": "ml",
+          "capacity_case": 12,
+          "search_codes": [
+            {
+              "code": "4901004201812",
+              "code_type": "JAN"
+            }
+          ],
+          "default_location": {
+            "id": 12345,
+            "code1": "1F",
+            "code2": "A01",
+            "code3": "01",
+            "display_name": "1F-A01-01"
+          }
+        },
+        {
+          "id": 211120,
+          "code": "211120",
+          "name": "予定なしテスト商品",
+          "capacity_case": 24,
+          "search_codes": [
+            {
+              "code": "4900000000000",
+              "code_type": "JAN"
+            }
+          ]
+        }
+      ],
+      "locations": [
+        {
+          "id": 12345,
+          "code1": "1F",
+          "code2": "A01",
+          "code3": "01",
+          "display_name": "1F-A01-01"
+        }
+      ]
+    }
+  }
+}
