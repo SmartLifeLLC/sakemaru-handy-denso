@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>棚卸し機能 — 同一商品スキャン時の数量加算仕様書</title>
+<style>
+  :root { --primary: #1e293b; --accent: #2563eb; --border: #e2e8f0; --bg: #f8fafc; --code-bg: #f1f5f9; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; color: var(--primary); background: var(--bg); line-height: 1.8; padding: 40px 20px; }
+  .container { max-width: 860px; margin: 0 auto; background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,.06); padding: 48px 40px; }
+  h1 { font-size: 24px; font-weight: 800; border-bottom: 3px solid var(--accent); padding-bottom: 12px; margin-bottom: 32px; }
+  h2 { font-size: 18px; font-weight: 700; margin: 36px 0 16px; padding-left: 12px; border-left: 4px solid var(--accent); }
+  h3 { font-size: 15px; font-weight: 700; margin: 24px 0 8px; color: #475569; }
+  p, li { font-size: 14px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 8px 0 16px 24px; }
+  li { margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+  th { background: #f1f5f9; font-weight: 700; white-space: nowrap; }
+  td { vertical-align: top; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+  .badge-new { background: #dbeafe; color: #1d4ed8; }
+  .badge-change { background: #fef3c7; color: #92400e; }
+  .badge-none { background: #f1f5f9; color: #64748b; }
+  code { font-family: "SF Mono", "Fira Code", monospace; font-size: 13px; background: var(--code-bg); padding: 2px 6px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 16px; border-radius: 8px; overflow-x: auto; margin: 8px 0 16px; font-size: 13px; line-height: 1.6; }
+  pre code { background: none; padding: 0; }
+  .flow-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px 20px; margin: 12px 0 20px; }
+  .flow-box .arrow { color: var(--accent); font-weight: 700; margin: 0 4px; }
+  .meta { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+  .highlight { background: #fefce8; border-left: 3px solid #eab308; padding: 12px 16px; margin: 12px 0; border-radius: 0 8px 8px 0; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0 20px; }
+  .compare > div { border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .compare > div:first-child { background: #fef2f2; }
+  .compare > div:last-child { background: #f0fdf4; }
+  .compare h4 { font-size: 13px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>棚卸し機能 — 同一商品スキャン時の数量加算</h1>
+<p class="meta">作成日: 2026-05-30 ｜ プロジェクト: sakemaru-handy-denso ｜ 対象: InventoryCount機能</p>
+
+<h2>1. 背景・目的</h2>
+<p>棚卸し作業では、同一商品が倉庫内の複数箇所に存在するため、同じJANコードを複数回スキャンして数量を積み上げる運用が発生する。現状は再スキャン時に前回の入力値が上書きされるため、ユーザーが手動で合計を計算して入力し直す必要がある。</p>
+<p><strong>本変更により、同一商品の再スキャン時に入力した数量が既存値に自動加算されるようにする。</strong></p>
+
+<h2>2. 現状と変更後のフロー比較</h2>
+
+<div class="compare">
+  <div>
+    <h4>現状（上書き）</h4>
+    <ol>
+      <li>商品Aスキャン → 空欄 → バラ5入力 → 確定</li>
+      <li>商品Aスキャン → 空欄 → バラ3入力 → 確定</li>
+      <li><strong>結果: バラ3</strong>（5が消える）</li>
+    </ol>
+  </div>
+  <div>
+    <h4>変更後（加算）</h4>
+    <ol>
+      <li>商品Aスキャン → 空欄 → バラ5入力 → 確定</li>
+      <li>商品Aスキャン → 空欄 → バラ3入力 → 確定</li>
+      <li><strong>結果: バラ8</strong>（5+3）</li>
+    </ol>
+  </div>
+</div>
+
+<div class="flow-box">
+  <strong>変更後のフロー:</strong><br>
+  JANスキャン <span class="arrow">→</span> 商品特定 <span class="arrow">→</span> 入力画面（空欄） <span class="arrow">→</span> 数量入力 <span class="arrow">→</span> 確定（既存値に加算） <span class="arrow">→</span> dirtyInputsに累計保存 <span class="arrow">→</span> キャッシュ <span class="arrow">→</span> 一括送信
+</div>
+
+<h2>3. UI仕様</h2>
+
+<table>
+  <tr>
+    <th>項目</th>
+    <th>仕様</th>
+  </tr>
+  <tr>
+    <td>入力フィールド</td>
+    <td>再スキャン時も常に<strong>空欄</strong>。ユーザーは増分のみ入力する。</td>
+  </tr>
+  <tr>
+    <td>既存数量の表示</td>
+    <td>なし（加算は裏側で自動処理）</td>
+  </tr>
+  <tr>
+    <td>合計バラ表示</td>
+    <td>入力中にリアルタイムで<strong>累計値（既存+入力中）</strong>を表示</td>
+  </tr>
+  <tr>
+    <td>確定メッセージ</td>
+    <td>「○○ の入力を保存しました（総バラ: X）」— Xは累計値</td>
+  </tr>
+</table>
+
+<h2>4. 設計: accumulatedBase アプローチ</h2>
+
+<p>Stateに一時的な「ベース値」を保持し、保存時にベース＋入力値を合計する方式。</p>
+
+<h3>4.1 概要</h3>
+<ul>
+  <li>スキャンで商品が確定した時、既存のdirtyInputがあればそれを <code>accumulatedBase</code> にコピー</li>
+  <li><code>saveLocalInput()</code> で保存する際、<code>base.caseQty + 入力caseQty</code> を計算して保存</li>
+  <li>UIフィールドは常に空欄（ユーザーは増分だけ入力）</li>
+  <li><code>accumulatedBase</code> は非永続（キャッシュ不要）。アプリ再起動時はdirtyInputsから復元される</li>
+</ul>
+
+<h3>4.2 データフロー図</h3>
+<pre><code>スキャン時:
+  dirtyInputs[itemId] が存在する？
+    ├─ YES → accumulatedBase = dirtyInputs[itemId] のコピー
+    └─ NO  → accumulatedBase = null
+
+保存時 (saveLocalInput):
+  caseQty  = 入力ケース + (accumulatedBase?.caseQuantity ?: 0)
+  pieceQty = 入力バラ   + (accumulatedBase?.pieceQuantity ?: 0)
+  dirtyInputs[itemId] = LocalInventoryInput(caseQty, pieceQty, ...)
+
+確定/クリア時:
+  accumulatedBase = null</code></pre>
+
+<h2>5. 変更対象ファイル</h2>
+
+<table>
+  <tr>
+    <th>ファイル</th>
+    <th>変更</th>
+    <th>内容</th>
+  </tr>
+  <tr>
+    <td><code>InventoryCountState.kt</code></td>
+    <td><span class="badge badge-new">追加</span></td>
+    <td><code>accumulatedBase: LocalInventoryInput? = null</code> フィールド追加。<code>totalPieces</code> 計算をBase込みに変更。</td>
+  </tr>
+  <tr>
+    <td rowspan="8"><code>InventoryCountViewModel.kt</code></td>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>saveLocalInput()</code> — Base値を加算して保存（核心の変更）</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>scan()</code> → <code>applyResult()</code> — 既存dirtyInputをaccumulatedBaseに取り込み</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>scanRemote()</code> — 同パターン。single result時にBase取り込み</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>selectItem()</code> — 複数候補タップ時もBase取り込み、フィールド空欄</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>searchLocal()</code> — 名前検索auto-select時もBase取り込み</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>confirmInput()</code> / <code>clearSelection()</code> — accumulatedBase = null</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>selectCount()</code> / <code>finishRound()</code> — accumulatedBase = null</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>setKeyword()</code> — バーコードバースト検知時、scan()前にauto-save追加（既存バグ修正）</td>
+  </tr>
+  <tr>
+    <td><code>InventoryCountScreen.kt</code></td>
+    <td><span class="badge badge-none">変更なし</span></td>
+    <td>totalPiecesはStateのcomputed propertyが自動反映するためUI変更不要</td>
+  </tr>
+  <tr>
+    <td><code>InventoryLocalCache</code></td>
+    <td><span class="badge badge-none">変更なし</span></td>
+    <td>accumulatedBaseは非永続。キャッシュフォーマットに変更なし</td>
+  </tr>
+</table>
+
+<h2>6. 各メソッドの変更詳細</h2>
+
+<h3>6.1 InventoryCountState — フィールド追加</h3>
+<pre><code>data class InventoryCountState(
+    ...
+    val accumulatedBase: LocalInventoryInput? = null,  // NEW
+    val dirtyInputs: Map&lt;Int, LocalInventoryInput&gt; = emptyMap(),
+    ...
+) {
+    val totalPieces: Int = run {
+        val incCase  = caseQuantity.toIntOrNull() ?: 0
+        val incPiece = pieceQuantity.toIntOrNull() ?: 0
+        val baseCase  = accumulatedBase?.caseQuantity ?: 0
+        val basePiece = accumulatedBase?.pieceQuantity ?: 0
+        (incCase + baseCase) * capacityCase + (incPiece + basePiece)
+    }
+}</code></pre>
+
+<h3>6.2 saveLocalInput() — 核心の変更</h3>
+<pre><code>private fun saveLocalInput() {
+    val current = _state.value
+    val item = current.selectedItem ?: return
+    if (current.caseQuantity.isBlank() && current.pieceQuantity.isBlank()) return
+
+    val incrementCase  = current.caseQuantity.toIntOrNull() ?: 0
+    val incrementPiece = current.pieceQuantity.toIntOrNull() ?: 0
+
+    // 加算: Base値 + 入力値
+    val base = current.accumulatedBase
+    val caseQty  = incrementCase  + (base?.caseQuantity ?: 0)
+    val pieceQty = incrementPiece + (base?.pieceQuantity ?: 0)
+
+    val total = (caseQty * item.capacityCase.coerceAtLeast(1)) + pieceQty
+    val input = LocalInventoryInput(
+        itemId = item.id, itemCode = item.itemCode,
+        itemName = item.itemName,
+        locationNo = item.location?.locationNo,
+        countRound = current.countRound,
+        caseQuantity = caseQty, pieceQuantity = pieceQty,
+        totalPieces = total
+    )
+    _state.update { it.copy(dirtyInputs = it.dirtyInputs + (item.id to input)) }
+    persistCache()
+}</code></pre>
+
+<h3>6.3 scan() → applyResult()</h3>
+<pre><code>fun applyResult(results: List&lt;InventoryCountItemResponse&gt;, quantityType: String?) {
+    val singleItem = if (results.size == 1) results.first() else null
+    val existingInput = singleItem?.let { _state.value.dirtyInputs[it.id] }
+    _state.update {
+        it.copy(
+            items = results,
+            selectedItem = singleItem,
+            accumulatedBase = existingInput,  // NEW
+            scanQuantityType = quantityType,
+            scannedCode = raw, isItfCode = isItf,
+            caseQuantity = "", pieceQuantity = "",
+            keyword = "",
+            error = if (results.size > 1) "複数の商品が見つかりました。選択してください" else null,
+            message = null
+        )
+    }
+}</code></pre>
+
+<h3>6.4 selectItem()</h3>
+<pre><code>fun selectItem(item: InventoryCountItemResponse) {
+    val existingInput = _state.value.dirtyInputs[item.id]
+    _state.update {
+        it.copy(
+            selectedItem = item,
+            accumulatedBase = existingInput,  // NEW
+            caseQuantity = "",                // CHANGED: 常に空欄
+            pieceQuantity = "",               // CHANGED: 常に空欄
+            message = null, error = null
+        )
+    }
+}</code></pre>
+
+<h3>6.5 confirmInput() / clearSelection()</h3>
+<pre><code>// confirmInput, clearSelection, selectCount, finishRound の state.copy に追加:
+accumulatedBase = null</code></pre>
+
+<h3>6.6 setKeyword() — バーストスキャン時のauto-save追加</h3>
+<pre><code>if (added >= 4) {
+    // NEW: 現在の入力をスキャン前に保存
+    val currentState = _state.value
+    if (currentState.selectedItem != null &&
+        (currentState.caseQuantity.isNotBlank() || currentState.pieceQuantity.isNotBlank())) {
+        saveLocalInput()
+    }
+    // ... existing code
+}</code></pre>
+
+<h2>7. エッジケース検証表</h2>
+
+<table>
+  <tr>
+    <th>#</th>
+    <th>シナリオ</th>
+    <th>期待結果</th>
+    <th>保証メカニズム</th>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td>A入力5確定 → A再スキャン → 入力3確定</td>
+    <td>合計 <strong>8</strong></td>
+    <td>base=5, inc=3 → saveLocalInput: 5+3=8</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>A(既存5)スキャン → 何も入力せず → Bスキャン</td>
+    <td>Aの値5は保持</td>
+    <td>空欄ガードでsaveLocalInput未実行。dirtyInputs[A]不変</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td>A(既存5) → 入力3 → 確定せずBスキャン</td>
+    <td>Aは<strong>8</strong>で保存</td>
+    <td>キーストロークごとのsaveLocalInputで base(5)+3=8 保存済</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td>スキャンで複数候補 → タップ選択</td>
+    <td>Base取り込み、空欄表示</td>
+    <td>selectItem()でaccumulatedBaseセット</td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td>アプリ再起動後に同一商品スキャン</td>
+    <td>前回の累計値に加算</td>
+    <td>dirtyInputsはキャッシュ復元済。スキャン時にbase化</td>
+  </tr>
+  <tr>
+    <td>6</td>
+    <td>3回連続スキャン: 5 → 3 → 2</td>
+    <td>合計 <strong>10</strong></td>
+    <td>1回目: 0+5=5, 2回目: 5+3=8, 3回目: 8+2=10</td>
+  </tr>
+  <tr>
+    <td>7</td>
+    <td>finishRound送信</td>
+    <td>累計値がサーバーに送信</td>
+    <td>dirtyInputsに累計値が保存済。送信ロジック変更なし</td>
+  </tr>
+</table>
+
+<h2>8. テスト手順</h2>
+<ol>
+  <li>ビルド・起動 → 棚卸し画面へ遷移</li>
+  <li>商品Aスキャン → バラ5入力 → 確定 → メッセージ「総バラ: 5」を確認</li>
+  <li>同じ商品A再スキャン → フィールドが<strong>空欄</strong>であること確認 → バラ3入力 → 確定 → メッセージ「総バラ: 8」を確認</li>
+  <li>商品A再スキャン → 何も入力せず商品Bスキャン → Aのdirtyが<strong>8のまま</strong>保持されていること</li>
+  <li>商品A再スキャン → バラ2入力 → 確定せずアプリを閉じる → 再起動 → 商品Aスキャン → 確定時に前回までの累計が維持されていること</li>
+  <li>finishRoundで送信 → サーバーに累計値が送られること</li>
+</ol>
+
+<h2>9. 影響範囲</h2>
+<div class="highlight">
+  <strong>影響範囲は棚卸しモジュール内に限定。</strong><br>
+  変更はInventoryCountState / InventoryCountViewModelのみ。API送信フォーマット・キャッシュフォーマット・画面レイアウトに変更なし。既存の配送機能には一切影響しない。
+</div>
+
+<h2>10. WMSサーバAPI変更点（2026-05-30追加）</h2>
+
+<p>今回のWMS側更新により、棚卸しAPIは数量別JANコードを扱えるようになった。Android側はスキャンしたコードに紐づく入数を保持し、ケース入力時の総バラ数計算に使用する。</p>
+
+<h3>10.1 JANコード辞書API</h3>
+<table>
+  <tr>
+    <th>API</th>
+    <th>変更内容</th>
+  </tr>
+  <tr>
+    <td><code>GET /api/wms/inventory-counts/{id}/jan-codes</code></td>
+    <td><code>item_search_information</code> と <code>item_quantity_information</code> を連携し、商品に紐づく全検索コードと数量情報を返す。</td>
+  </tr>
+</table>
+
+<p>レスポンスの <code>jan_codes</code> はコード文字列をキーにした辞書。初期ローディングの通信量を抑えるため、繰り返し出るキーは短縮形式で返す。</p>
+
+<table>
+  <tr>
+    <th>項目</th>
+    <th>内容</th>
+  </tr>
+  <tr>
+    <td><code>i</code></td>
+    <td>商品ID。旧 <code>item_id</code>。</td>
+  </tr>
+  <tr>
+    <td><code>ct</code></td>
+    <td>コード種別。<code>JAN</code> / <code>ITF</code> / <code>SDP</code> / <code>OTHER</code>。</td>
+  </tr>
+  <tr>
+    <td><code>t</code></td>
+    <td>数量種別コード。<code>0=PIECE</code>、<code>1=CASE</code>、<code>2=CARTON</code>、<code>9=不明</code>。</td>
+  </tr>
+  <tr>
+    <td><code>q</code></td>
+    <td>そのコードに紐づく入数。旧 <code>package_quantity</code>。ケースJANの場合はケース入数、バラJANの場合は <code>1</code>。</td>
+  </tr>
+</table>
+
+<p><code>item_quantity_information_id</code>、<code>quantity_code</code>、<code>dm_code</code>、<code>product_code</code>、<code>own_code</code> はHANDY側の棚卸処理では不要なため返さない。</p>
+
+<pre><code>{
+  "jan_codes": {
+    "1483840": [
+      {
+        "i": 141019,
+        "ct": "OTHER",
+        "t": "1",
+        "q": 20
+      }
+    ],
+    "1483376": [
+      { "i": 141019, "ct": "OTHER", "t": "1", "q": 6 }
+    ],
+    "1480689": [
+      { "i": 141019, "ct": "OTHER", "t": "1", "q": 12 }
+    ],
+    "4901004009319": [
+      { "i": 141019, "ct": "JAN", "t": "0", "q": 1 }
+    ]
+  }
+}</code></pre>
+
+<h3>10.2 棚卸明細API</h3>
+<table>
+  <tr>
+    <th>API</th>
+    <th>変更内容</th>
+  </tr>
+  <tr>
+    <td><code>GET /api/wms/inventory-counts/{id}/items</code><br><code>POST /api/wms/inventory-counts/{id}/scan</code></td>
+    <td>各明細の <code>search_codes</code> は <code>c</code>（コード）、<code>ct</code>（コード種別）、<code>t</code>（数量種別）、<code>q</code>（入数）の短縮形式で返す。<code>volume_unit_label</code> も追加。</td>
+  </tr>
+</table>
+
+<p><code>volume_unit_label</code> は <code>EVolumeUnit</code> で表示単位に変換した値。例: <code>MILLILITER</code> は <code>ml</code>。</p>
+
+<h3>10.2.1 items / scan API 戻り値仕様</h3>
+
+<p>すべての棚卸しAPIは共通Envelopeで返る。Android側は <code>result.data</code> 以下を各Response modelに対応させる。</p>
+
+<pre><code>{
+  "is_success": true,
+  "code": "SUCCESS",
+  "result": {
+    "data": { ... },
+    "debug_message": null
+  }
+}</code></pre>
+
+<p><code>GET /api/wms/inventory-counts/{id}/items</code> の <code>result.data</code>:</p>
+
+<table>
+  <tr>
+    <th>キー</th>
+    <th>型</th>
+    <th>Android model</th>
+    <th>内容</th>
+  </tr>
+  <tr>
+    <td><code>items</code></td>
+    <td>array</td>
+    <td><code>InventoryItemsData.items</code></td>
+    <td>棚卸明細一覧。</td>
+  </tr>
+  <tr>
+    <td><code>meta.page</code></td>
+    <td>int</td>
+    <td><code>InventoryPageMeta.page</code></td>
+    <td>現在ページ。</td>
+  </tr>
+  <tr>
+    <td><code>meta.per_page</code></td>
+    <td>int</td>
+    <td><code>InventoryPageMeta.perPage</code></td>
+    <td>1ページ件数。最大500。</td>
+  </tr>
+  <tr>
+    <td><code>meta.total</code></td>
+    <td>int</td>
+    <td><code>InventoryPageMeta.total</code></td>
+    <td>総明細件数。</td>
+  </tr>
+  <tr>
+    <td><code>meta.last_page</code></td>
+    <td>int</td>
+    <td><code>InventoryPageMeta.lastPage</code></td>
+    <td>最終ページ。</td>
+  </tr>
+</table>
+
+<p><code>POST /api/wms/inventory-counts/{id}/scan</code> の <code>result.data</code> は <code>{ "items": [...] }</code>。明細の構造は下表と同一。</p>
+
+<table>
+  <tr>
+    <th>キー</th>
+    <th>型</th>
+    <th>Android model</th>
+    <th>内容</th>
+  </tr>
+  <tr>
+    <td><code>id</code></td>
+    <td>int</td>
+    <td><code>InventoryCountItemResponse.id</code></td>
+    <td>棚卸明細ID。送信時の <code>item_id</code> にはこの値を入れる。</td>
+  </tr>
+  <tr>
+    <td><code>paper_barcode</code></td>
+    <td>string|null</td>
+    <td><code>paperBarcode</code></td>
+    <td>棚卸紙バーコード。例: <code>ICITEM-25761</code>。</td>
+  </tr>
+  <tr>
+    <td><code>search_text</code></td>
+    <td>string|null</td>
+    <td><code>searchText</code></td>
+    <td>ローカル検索用結合文字列。</td>
+  </tr>
+  <tr>
+    <td><code>item_id</code></td>
+    <td>int</td>
+    <td><code>itemId</code></td>
+    <td>商品マスタID。</td>
+  </tr>
+  <tr>
+    <td><code>item_code</code></td>
+    <td>string</td>
+    <td><code>itemCode</code></td>
+    <td>商品コード。</td>
+  </tr>
+  <tr>
+    <td><code>item_name</code></td>
+    <td>string</td>
+    <td><code>itemName</code></td>
+    <td>商品名。</td>
+  </tr>
+  <tr>
+    <td><code>barcode</code></td>
+    <td>string|null</td>
+    <td><code>barcode</code></td>
+    <td>代表JAN。基本はバラJAN。</td>
+  </tr>
+  <tr>
+    <td><code>volume</code></td>
+    <td>string|null</td>
+    <td><code>volume</code></td>
+    <td>容量。例: <code>"700"</code>。Android decodeズレ防止のため文字列で返す。</td>
+  </tr>
+  <tr>
+    <td><code>volume_unit</code></td>
+    <td>string|null</td>
+    <td><code>volumeUnit</code></td>
+    <td>容量単位Enum値。例: <code>MILLILITER</code>。</td>
+  </tr>
+  <tr>
+    <td><code>volume_unit_label</code></td>
+    <td>string|null</td>
+    <td><code>volumeUnitLabel</code></td>
+    <td>表示用容量単位。例: <code>ml</code>。画面表示はこちらを優先する。</td>
+  </tr>
+  <tr>
+    <td><code>capacity_case</code></td>
+    <td>int</td>
+    <td><code>capacityCase</code></td>
+    <td>商品マスタ標準のケース入数。スキャンJANに <code>q</code> がある場合はローカル入力計算で <code>q</code> を優先する。</td>
+  </tr>
+  <tr>
+    <td><code>capacity_carton</code></td>
+    <td>int|null</td>
+    <td>未使用</td>
+    <td>ボール入数。現Androidモデルでは未定義のため無視される。</td>
+  </tr>
+  <tr>
+    <td><code>location</code></td>
+    <td>object|null</td>
+    <td><code>InventoryLocationResponse</code></td>
+    <td><code>id</code>, <code>floor_name</code>, <code>location_no</code>, <code>code1</code>, <code>code2</code>, <code>code3</code>。</td>
+  </tr>
+  <tr>
+    <td><code>system_quantity</code></td>
+    <td>int</td>
+    <td><code>systemQuantity</code></td>
+    <td>理論在庫の総バラ数。</td>
+  </tr>
+  <tr>
+    <td><code>system_case_quantity</code></td>
+    <td>int</td>
+    <td><code>systemCaseQuantity</code></td>
+    <td>理論在庫のケース数。<code>capacity_case</code> 基準。</td>
+  </tr>
+  <tr>
+    <td><code>system_piece_quantity</code></td>
+    <td>int</td>
+    <td><code>systemPieceQuantity</code></td>
+    <td>理論在庫のバラ端数。<code>capacity_case</code> 基準。</td>
+  </tr>
+  <tr>
+    <td><code>system_total_piece_quantity</code></td>
+    <td>int</td>
+    <td><code>systemTotalPieceQuantity</code></td>
+    <td>理論在庫の総バラ数。<code>system_quantity</code> と同値。</td>
+  </tr>
+  <tr>
+    <td><code>first_count_quantity</code></td>
+    <td>number|null</td>
+    <td><code>firstCountQuantity</code></td>
+    <td>1回目の実棚総バラ数。</td>
+  </tr>
+  <tr>
+    <td><code>second_count_quantity</code></td>
+    <td>number|null</td>
+    <td><code>secondCountQuantity</code></td>
+    <td>2回目の実棚総バラ数。</td>
+  </tr>
+  <tr>
+    <td><code>final_count_quantity</code></td>
+    <td>number|null</td>
+    <td><code>finalCountQuantity</code></td>
+    <td>最終の実棚総バラ数。</td>
+  </tr>
+  <tr>
+    <td><code>current_count_quantity</code></td>
+    <td>number|null</td>
+    <td><code>currentCountQuantity</code></td>
+    <td>現在有効な実棚総バラ数。</td>
+  </tr>
+  <tr>
+    <td><code>difference_quantity</code></td>
+    <td>number|null</td>
+    <td><code>differenceQuantity</code></td>
+    <td>現在有効な実棚数 - 理論在庫数。</td>
+  </tr>
+  <tr>
+    <td><code>input_count</code></td>
+    <td>int</td>
+    <td><code>inputCount</code></td>
+    <td>入力回数。</td>
+  </tr>
+  <tr>
+    <td><code>last_counted_at</code></td>
+    <td>string|null</td>
+    <td>未使用</td>
+    <td>最終入力日時。現Androidモデルでは未定義のため無視される。</td>
+  </tr>
+  <tr>
+    <td><code>search_codes</code></td>
+    <td>array</td>
+    <td><code>searchCodes</code></td>
+    <td><code>compact=1</code> のitems取得では省略。scan結果や非compact時は <code>{ c, ct, t, q }</code> を返す。</td>
+  </tr>
+</table>
+
+<pre><code>{
+  "id": 25761,
+  "paper_barcode": "ICITEM-25761",
+  "search_text": "ICITEM-25761 132680 ポーグス 700ml 5011166055709 ZZ1100",
+  "item_id": 132680,
+  "item_code": "132680",
+  "item_name": "ポーグス アイリッシュウィスキー ７００ｍｌ",
+  "barcode": "5011166055709",
+  "volume": "700",
+  "volume_unit": "MILLILITER",
+  "volume_unit_label": "ml",
+  "capacity_case": 6,
+  "capacity_carton": null,
+  "location": {
+    "id": 4,
+    "floor_name": "江守店1F",
+    "location_no": "ZZ1100",
+    "code1": "ZZ",
+    "code2": "1",
+    "code3": "100"
+  },
+  "system_quantity": 10,
+  "system_case_quantity": 1,
+  "system_piece_quantity": 4,
+  "system_total_piece_quantity": 10,
+  "first_count_quantity": null,
+  "second_count_quantity": null,
+  "final_count_quantity": null,
+  "current_count_quantity": null,
+  "difference_quantity": null,
+  "input_count": 0,
+  "last_counted_at": null,
+  "search_codes": [
+    { "c": "5011166055709", "ct": "JAN", "t": "0", "q": 1 }
+  ]
+}</code></pre>
+
+<h3>10.3 数量登録API</h3>
+<table>
+  <tr>
+    <th>API</th>
+    <th>変更内容</th>
+  </tr>
+  <tr>
+    <td><code>POST /api/wms/inventory-count-items/{itemId}/count</code></td>
+    <td>同じ明細・同じ回数への登録は既存値に加算する。入力者は最後の登録者で更新される。</td>
+  </tr>
+  <tr>
+    <td><code>POST /api/wms/inventory-counts/{id}/counts/bulk</code></td>
+    <td>一括送信でも同じ明細・同じ回数への登録は既存値に加算する。</td>
+  </tr>
+</table>
+
+<p>Handyから送信する項目:</p>
+<table>
+  <tr>
+    <th>項目</th>
+    <th>内容</th>
+  </tr>
+  <tr>
+    <td><code>quantity</code></td>
+    <td>Android側で計算した総バラ数。Handy同期では必須。WMS側はこの値を棚卸入力数量として扱い、ケース数量から再計算しない。</td>
+  </tr>
+  <tr>
+    <td><code>case_quantity</code></td>
+    <td>Handy画面で入力したケース数。記録・確認用。<code>quantity</code> がある場合、WMS側の数量計算には使わない。</td>
+  </tr>
+  <tr>
+    <td><code>piece_quantity</code></td>
+    <td>Handy画面で入力したバラ数。記録・確認用。<code>quantity</code> がある場合、WMS側の数量計算には使わない。</td>
+  </tr>
+  <tr>
+    <td><code>search_code</code></td>
+    <td>実際にスキャンしたコード。推奨。</td>
+  </tr>
+  <tr>
+    <td><code>jan_code</code></td>
+    <td><code>search_code</code> の別名として利用可能。</td>
+  </tr>
+  <tr>
+    <td><code>scanned_code</code></td>
+    <td><code>search_code</code> の別名として利用可能。</td>
+  </tr>
+</table>
+
+<p>責務分担: Android側が <code>jan_codes</code> の <code>q</code> を使って <code>case_quantity * q + piece_quantity</code> を計算し、総バラ数を <code>quantity</code> として送る。WMS側は <code>quantity</code> を優先して保存する。<code>quantity</code> がない場合のケース換算は、旧クライアントや手動API確認用の後方互換fallback。</p>
+
+<pre><code>// ケースJAN 1483376 は q = 6 の例
+POST /api/wms/inventory-count-items/{itemId}/count
+{
+  "count_round": 1,
+  "quantity": 15,
+  "case_quantity": 2,
+  "piece_quantity": 3,
+  "search_code": "1483376",
+  "request_uuid": "..."
+}
+
+// Android側計算:
+// quantity = 2 * 6 + 3 = 15
+// WMS側は quantity=15 を保存対象として扱う。
+// 既存の1回目数量が10なら、保存結果は 10 + 15 = 25</code></pre>
+
+<h3>10.4 Android側の実装注意</h3>
+<ul>
+  <li>スキャンしたコードは <code>LocalInventoryInput</code> または送信用DTOに保持し、同期時に <code>search_code</code> として送る。</li>
+  <li>ケースJANの場合、画面表示・ローカル計算ではそのコードの <code>q</code> を <code>capacityCase</code> として扱う。</li>
+  <li>バラJANの場合は <code>q = 1</code> として扱う。</li>
+  <li>Androidモデルは <code>t</code> を <code>0=PIECE</code>、<code>1=CASE</code>、<code>2=CARTON</code> に復元して扱う。</li>
+  <li>同一商品の再スキャン時はAndroid側でも加算し、サーバ側でも加算される。同期時に送る値は「今回同期する増分」ではなく、Android内で保持している未送信累計値とする。</li>
+  <li>同期成功後は送信済みのdirtyInputsのみクリアする。同期失敗時はローカル保存を残す。</li>
+</ul>
+
+<h2>11. Android側 追加仕様（2026-05-30追加）</h2>
+
+<h3>11.1 ケースJAN対応</h3>
+<p>JAN辞書の <code>q</code>（入数）をケース入力時の総バラ数計算に使用する。</p>
+
+<table>
+  <tr>
+    <th>スキャンしたコード</th>
+    <th>JAN辞書の <code>q</code></th>
+    <th>ケース2・バラ3を入力した場合の総バラ数</th>
+  </tr>
+  <tr>
+    <td>バラJAN（<code>t=0, q=1</code>）</td>
+    <td>1</td>
+    <td>2 × <code>capacityCase</code>（商品マスタ値） + 3</td>
+  </tr>
+  <tr>
+    <td>ケースJAN（<code>t=1, q=6</code>）</td>
+    <td>6</td>
+    <td>2 × <strong>6</strong> + 3 = <strong>15</strong></td>
+  </tr>
+  <tr>
+    <td>ケースJAN（<code>t=1, q=20</code>）</td>
+    <td>20</td>
+    <td>2 × <strong>20</strong> + 3 = <strong>43</strong></td>
+  </tr>
+</table>
+
+<div class="highlight">
+  <strong>ルール:</strong> スキャンしたコードに <code>q</code> がある場合、ローカルでの総バラ数計算はその <code>q</code> を <code>capacityCase</code> の代わりに使う。送信時も <code>search_code</code> としてスキャンコードを添付し、サーバ側でも同じ <code>q</code> で変換される。
+</div>
+
+<h3>11.2 ITFコード読み込み時のエラー表示</h3>
+
+<table>
+  <tr>
+    <th>現状</th>
+    <th>変更後</th>
+  </tr>
+  <tr>
+    <td>ITFコード（14桁数字）を読み込むと、商品が見つかった場合は入力画面に遷移し、赤文字で「ITFコード」と表示する</td>
+    <td><strong>ITFコードを読み込んだ場合はエラーとして扱い、「ITFコードエラー」と表示する。</strong>入力画面には遷移しない。</td>
+  </tr>
+</table>
+
+<pre><code>// ViewModel scan() 内
+val isItf = raw.length == 14 && raw.all { it.isDigit() }
+if (isItf) {
+    _state.update { it.copy(error = "ITFコードエラー", message = null) }
+    SoundUtils.playError()  // エラー音
+    return
+}</code></pre>
+
+<h3>11.3 読み込み不可コードのエラー表示</h3>
+
+<table>
+  <tr>
+    <th>現状</th>
+    <th>変更後</th>
+  </tr>
+  <tr>
+    <td>サーバー検索でも見つからない場合: 「商品が見つかりません」<br>サーバーエラー(422等): 例外メッセージをそのまま表示</td>
+    <td>すべて統一して<strong>「コード不明」</strong>と表示する。HTTPステータスコードや技術的なメッセージはユーザーに見せない。</td>
+  </tr>
+</table>
+
+<pre><code>// ViewModel scanRemote() 内
+.onSuccess { response ->
+    val results = response.result?.data?.items.orEmpty()
+    if (results.isEmpty()) {
+        _state.update { it.copy(error = "コード不明", message = null) }
+    } else { ... }
+}
+.onFailure { e ->
+    _state.update { it.copy(error = "コード不明", message = null) }
+}</code></pre>
+
+<h3>11.4 ビープ音仕様</h3>
+
+<table>
+  <tr>
+    <th>イベント</th>
+    <th>音の種類</th>
+    <th>メソッド</th>
+    <th>備考</th>
+  </tr>
+  <tr>
+    <td>ボタン押下（すべて）</td>
+    <td>軽いビープ音</td>
+    <td><code>SoundUtils.playTick()</code></td>
+    <td>確定ボタン、ラウンド切替、送信ボタン、タブ切替など全ボタン</td>
+  </tr>
+  <tr>
+    <td>スキャン読み込み成功（商品特定）</td>
+    <td>軽快なビープ音</td>
+    <td><code>SoundUtils.playSuccess()</code></td>
+    <td><span class="badge badge-new">新規</span> 成功時専用の音。<code>TONE_PROP_BEEP2</code> 等で差別化</td>
+  </tr>
+  <tr>
+    <td>スキャン読み込みエラー</td>
+    <td>エラー音</td>
+    <td><code>SoundUtils.playError()</code></td>
+    <td><span class="badge badge-new">新規</span> ITFコードエラー、コード不明時</td>
+  </tr>
+  <tr>
+    <td>数量入力（キーストローク）</td>
+    <td>小さなティック音</td>
+    <td><code>SoundUtils.playTick()</code></td>
+    <td>現状維持</td>
+  </tr>
+</table>
+
+<h3>11.4.1 SoundUtils 追加メソッド</h3>
+<pre><code>// SoundUtils.kt に追加
+
+fun playSuccess() {
+    try {
+        if (toneGenerator == null) {
+            toneGenerator = ToneGenerator(AudioManager.STREAM_SYSTEM, 100)
+        }
+        toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP2, 150)
+    } catch (e: Exception) {}
+}
+
+fun playError() {
+    try {
+        if (toneGenerator == null) {
+            toneGenerator = ToneGenerator(AudioManager.STREAM_SYSTEM, 100)
+        }
+        toneGenerator?.startTone(ToneGenerator.TONE_PROP_NACK, 200)
+    } catch (e: Exception) {}
+}</code></pre>
+
+<h3>11.5 変更対象ファイルまとめ（追加分）</h3>
+
+<table>
+  <tr>
+    <th>ファイル</th>
+    <th>変更</th>
+    <th>内容</th>
+  </tr>
+  <tr>
+    <td><code>SoundUtils.kt</code></td>
+    <td><span class="badge badge-new">追加</span></td>
+    <td><code>playSuccess()</code> と <code>playError()</code> メソッド追加</td>
+  </tr>
+  <tr>
+    <td><code>InventoryCountViewModel.kt</code></td>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>scan()</code>: ITFコード検知時にエラー返却・早期リターン。<code>scanRemote()</code>: エラーメッセージを「コード不明」に統一。成功時に<code>playSuccess()</code>呼出。</td>
+  </tr>
+  <tr>
+    <td><code>InventoryCountScreen.kt</code></td>
+    <td><span class="badge badge-change">変更</span></td>
+    <td>全ボタンの<code>onClick</code>に<code>SoundUtils.playTick()</code>追加。ITFコード警告UIを削除（エラー表示に統合）。</td>
+  </tr>
+  <tr>
+    <td><code>InventoryCountState.kt</code></td>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>isItfCode</code> フィールド不要になる可能性あり（ITFは入力画面に遷移しないため）</td>
+  </tr>
+  <tr>
+    <td><code>LocalInventoryInput</code></td>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>searchCode: String?</code> フィールド追加（スキャンしたコードを保持、送信時に <code>search_code</code> として送る）</td>
+  </tr>
+  <tr>
+    <td><code>JanCodeEntry</code> model</td>
+    <td><span class="badge badge-change">変更</span></td>
+    <td>短縮形式 <code>i</code>, <code>ct</code>, <code>t</code>, <code>q</code> に対応するフィールド追加/変更</td>
+  </tr>
+  <tr>
+    <td><code>InventoryCountItemResponse</code> model</td>
+    <td><span class="badge badge-change">変更</span></td>
+    <td><code>volumeUnitLabel</code>, <code>searchCodes</code> 等の新規フィールド追加</td>
+  </tr>
+</table>
+
+<h2>12. WMS棚卸確定時の実棚変更反映ルール</h2>
+
+<table>
+  <tr>
+    <th>項目</th>
+    <th>仕様</th>
+  </tr>
+  <tr>
+    <td><code>items.is_managed_stock = 0</code></td>
+    <td>WMS棚卸由来の実棚変更ではスキップしない。棚卸で確定した数量を <code>real_stocks</code> / <code>real_stock_lots</code> に反映する。</td>
+  </tr>
+  <tr>
+    <td>通常の手動実棚変更</td>
+    <td>従来通り <code>is_managed_stock = 0</code> は対象外。今回の例外は <code>source_type = WMS_INVENTORY_COUNT</code> のみ。</td>
+  </tr>
+  <tr>
+    <td>差分数量</td>
+    <td><code>stock_quantity_after - 現在のreal_stocks.current_quantity</code> を最終的な反映差分として扱う。</td>
+  </tr>
+  <tr>
+    <td>テスト確認</td>
+    <td>ローカル棚卸 <code>id=8</code> の <code>is_managed_stock = 0</code> 明細で、実棚変更明細作成と <code>real_stocks.current_quantity</code> 更新を確認済み。</td>
+  </tr>
+</table>
+
+<h2>13. 懸念点と渋滞対策</h2>
+
+<table>
+  <tr>
+    <th>箇所</th>
+    <th>確認結果・対策</th>
+  </tr>
+  <tr>
+    <td>棚卸対象の算出</td>
+    <td>棚卸対象は <code>real_stocks.warehouse_id</code> と <code>current_quantity != 0</code> を基準に作成する。ローカル倉庫91では <code>real_stocks</code> 約3714件、active lot 約9573件。複数lotを持つ <code>real_stock</code> は多いが、複数ロケーションに分かれるものは9件。現状は <code>real_stock</code> 単位で1明細化し、最新active lotの棚番を代表表示するため、棚番別精度が必要な場合はlot/ロケーション単位明細への変更が次の改善点。</td>
+  </tr>
+  <tr>
+    <td>システム在庫0の商品</td>
+    <td>現状の棚卸対象は <code>current_quantity != 0</code> のため、理論在庫0だが現物がある商品は初期データに含まれない。Handyのローカル検索も棚卸対象内だけを見るため、このケースは「対象外商品の発見」として別途追加明細を作るAPI/画面が必要。棚卸精度の観点では残課題。</td>
+  </tr>
+  <tr>
+    <td>JAN・入数連携</td>
+    <td>商品に紐づく active な <code>item_search_information</code> は全件連携する。ローカル棚卸 id=8 では3736商品のうち3730商品にactive検索コードあり。ケースJAN 4872件のうち3件は <code>item_quantity_information.quantity</code> が未設定または0のため、サーバ側はfallbackで1扱いになる。該当データはマスタ修正対象。</td>
+  </tr>
+  <tr>
+    <td>Handyの総バラ計算</td>
+    <td>スキャンしたJANコードと入数 <code>q</code> をローカル入力に保持し、同じ商品を再スキャンした場合はローカル未送信の総バラ数へ加算する。数字入力中の <code>onValueChange</code> は同じ入力欄の現在値で再計算し、入力途中の保存で二重加算しない。送信時は総バラ数を <code>quantity</code>、スキャンコードを <code>search_code</code> としてWMSへ送る。</td>
+  </tr>
+  <tr>
+    <td>初期同期データ量</td>
+    <td><code>items</code> は500件ページング、JAN辞書は短縮キー形式。ローカル棚卸 id=8 の実測では <code>items?page=1&amp;per_page=500&amp;compact=1</code> が約574KB、<code>jan-codes</code> が約765KB。さらに件数が増える場合は <code>jan-codes</code> もページング化する。</td>
+  </tr>
+  <tr>
+    <td>回数終了時の送信渋滞</td>
+    <td>Handyは未送信入力をローカル保存し、回数終了時に数量入力があった明細のみ送る。大量入力時は500件単位で分割送信し、途中失敗時は成功分だけ履歴化、未送信分はローカルに残す。</td>
+  </tr>
+  <tr>
+    <td>履歴表示</td>
+    <td>Androidの履歴タブは端末内の <code>dirtyInputs</code> / <code>sentHistory</code> のみを表示する。サーバの <code>GET /api/wms/inventory-count-items/{itemId}/logs</code> はログイン中picker本人のHANDYログだけを返す。他人のHANDY履歴とWEB修正履歴は返さない。</td>
+  </tr>
+  <tr>
+    <td>WMS bulk count API</td>
+    <td><code>request_uuid</code> は入力ログで一意制御されるため、通信リトライの二重登録を防止できる。Handyはローカル入力ごとに固定の <code>request_uuid</code> を保持し、再送時も同じ値を使う。サーバ側は加算処理時も差異計算に加算後数量を使う。</td>
+  </tr>
+  <tr>
+    <td>確定時の実棚変更キュー作成</td>
+    <td>差異明細を棚番先頭2桁で分割して <code>inventory_adjustment_queue</code> を作成する。ローカル棚卸 id=8 では3000件の差異が50キューに分割され、最大bucketは381件。確定処理は約9.65秒。数万件規模ではキュー作成時の <code>get()</code> とJSON組み立てがメモリ負荷になるため、次の改善はchunk処理化。</td>
+  </tr>
+  <tr>
+    <td>ai-core queue処理</td>
+    <td><code>request_id = wms-inventory-adjustment-{count_id}-{bucket}</code> で重複伝票作成を防ぐ。進捗はWMS棚卸の単一queueカラムではなく、<code>inventory_adjustment_queue</code> の該当 <code>request_id</code> 群を集計して表示する。</td>
+  </tr>
+  <tr>
+    <td>非在庫管理商品</td>
+    <td><code>source_type = WMS_INVENTORY_COUNT</code> の実棚変更では <code>items.is_managed_stock = 0</code> でも反映対象。通常の手動実棚変更では従来通り対象外。</td>
+  </tr>
+</table>
+
+</div>
+</body>
+</html>

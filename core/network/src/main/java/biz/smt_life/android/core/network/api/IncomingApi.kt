@@ -2,6 +2,10 @@ package biz.smt_life.android.core.network.api
 
 import biz.smt_life.android.core.network.model.ApiEnvelope
 import biz.smt_life.android.core.network.model.IncomingProductResponse
+import biz.smt_life.android.core.network.model.IncomingInspectionBatchSyncRequest
+import biz.smt_life.android.core.network.model.IncomingInspectionBatchSyncResponse
+import biz.smt_life.android.core.network.model.IncomingItemMasterResponse
+import biz.smt_life.android.core.network.model.IncomingSnapshotResponse
 import biz.smt_life.android.core.network.model.IncomingWorkItemResponse
 import biz.smt_life.android.core.network.model.ItemLocationSearchResponse
 import biz.smt_life.android.core.network.model.LocationResponse
@@ -165,4 +169,20 @@ interface IncomingApi {
         @Query("search") search: String,
         @Query("limit") limit: Int? = null
     ): ApiEnvelope<List<ItemLocationSearchResponse>>
+
+    @GET("/api/v2/incoming/snapshot")
+    suspend fun getIncomingSnapshot(
+        @Query("warehouse_id") warehouseId: Int,
+        @Query("inspection_date") inspectionDate: String? = null
+    ): ApiEnvelope<IncomingSnapshotResponse>
+
+    @GET("/api/v2/incoming/item-master")
+    suspend fun getIncomingItemMaster(
+        @Query("warehouse_id") warehouseId: Int
+    ): ApiEnvelope<IncomingItemMasterResponse>
+
+    @POST("/api/v2/incoming/inspection-batches/sync")
+    suspend fun syncIncomingInspectionBatch(
+        @Body request: IncomingInspectionBatchSyncRequest
+    ): ApiEnvelope<IncomingInspectionBatchSyncResponse>
 }

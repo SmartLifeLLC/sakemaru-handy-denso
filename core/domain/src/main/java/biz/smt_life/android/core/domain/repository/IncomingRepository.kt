@@ -1,7 +1,11 @@
 package biz.smt_life.android.core.domain.repository
 
+import biz.smt_life.android.core.domain.model.IncomingInspectionBatchSyncData
+import biz.smt_life.android.core.domain.model.IncomingInspectionBatchSyncResult
+import biz.smt_life.android.core.domain.model.IncomingItemMaster
 import biz.smt_life.android.core.domain.model.IncomingProduct
 import biz.smt_life.android.core.domain.model.IncomingSchedule
+import biz.smt_life.android.core.domain.model.IncomingSnapshot
 import biz.smt_life.android.core.domain.model.IncomingWarehouse
 import biz.smt_life.android.core.domain.model.IncomingWorkItem
 import biz.smt_life.android.core.domain.model.ItemLocationSearchResult
@@ -153,4 +157,21 @@ interface IncomingRepository {
         search: String,
         limit: Int? = 10
     ): Result<List<ItemLocationSearchResult>>
+
+    suspend fun getIncomingSnapshot(
+        warehouseId: Int,
+        inspectionDate: String? = null
+    ): Result<IncomingSnapshot>
+
+    suspend fun ensureIncomingItemMaster(
+        warehouseId: Int
+    ): Result<IncomingItemMaster>
+
+    suspend fun refreshIncomingItemMaster(
+        warehouseId: Int
+    ): Result<IncomingItemMaster>
+
+    suspend fun syncIncomingInspectionBatch(
+        data: IncomingInspectionBatchSyncData
+    ): Result<IncomingInspectionBatchSyncResult>
 }

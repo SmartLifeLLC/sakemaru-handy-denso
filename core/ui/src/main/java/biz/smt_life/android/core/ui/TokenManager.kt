@@ -58,6 +58,12 @@ class TokenManager @Inject constructor(
         return sharedPreferences.getInt(KEY_WAREHOUSE_ID, -1)
     }
 
+    fun setDefaultWarehouseId(warehouseId: Int) {
+        sharedPreferences.edit {
+            putInt(KEY_WAREHOUSE_ID, warehouseId)
+        }
+    }
+
     fun clearAuth() {
         sharedPreferences.edit {
             remove(KEY_TOKEN)

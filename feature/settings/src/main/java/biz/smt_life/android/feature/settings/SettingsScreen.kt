@@ -1,8 +1,10 @@
 package biz.smt_life.android.feature.settings
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -64,7 +66,8 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.Start,
             verticalArrangement = Arrangement.Top
         ) {
@@ -169,6 +172,8 @@ fun SettingsScreen(
                     )
                     Text(
                         text = "• URLはhttp://またはhttps://で始まる必要があります\n" +
+                                "• AndroidエミュレータからMacのローカルWMSへ接続する場合は http://10.0.2.2:8002/ を使用してください\n" +
+                                "• 実機HANDYからMacへ接続する場合はMacのLAN IPを指定してください\n" +
                                 "• 変更は即座に反映されます\n" +
                                 "• 保存する前にサーバーに接続できることを確認してください",
                         style = MaterialTheme.typography.bodySmall,

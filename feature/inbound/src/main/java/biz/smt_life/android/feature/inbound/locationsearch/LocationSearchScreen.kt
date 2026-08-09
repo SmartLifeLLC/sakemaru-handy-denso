@@ -47,8 +47,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -61,7 +64,6 @@ import biz.smt_life.android.core.domain.model.ItemLocation
 import biz.smt_life.android.core.domain.model.ItemLocationSearchResult
 import biz.smt_life.android.core.domain.model.StockLocation
 import biz.smt_life.android.core.domain.model.StockStatus
-import biz.smt_life.android.core.ui.ScanKeyHandler
 import biz.smt_life.android.feature.inbound.incoming.FunctionKey
 import biz.smt_life.android.feature.inbound.incoming.FunctionKeyBar
 
@@ -74,11 +76,6 @@ fun LocationSearchScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val searchFocusRequester = remember { FocusRequester() }
-
-    ScanKeyHandler(
-        onScan = viewModel::onScan,
-        onScanStart = viewModel::prepareForScan
-    )
 
     LaunchedEffect(Unit) {
         searchFocusRequester.requestFocus()
@@ -126,6 +123,18 @@ fun LocationSearchScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.Enter -> {
+                            if (state.query.isNotBlank()) {
+                                viewModel.searchNow()
+                                true
+                            } else false
+                        }
+                        else -> false
+                    }
+                }
                 .onKeyEvent { event ->
                     when (event.key) {
                         Key.F1 -> {
@@ -194,6 +203,10 @@ private fun SearchInput(
                         .height(22.dp),
                     strokeWidth = 2.dp
                 )
+            } else if (query.isNotBlank()) {
+                IconButton(onClick = onSearch) {
+                    Icon(Icons.Default.Search, contentDescription = "検索")
+                }
             }
         },
         singleLine = true,
@@ -267,8 +280,7 @@ private fun CandidateRow(
                 result.item.primaryJanCode?.let { MonoText(it) }
             }
         }
-    }
-}
+    }}
 
 @Composable
 private fun DetailPanel(result: ItemLocationSearchResult) {

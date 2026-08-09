@@ -44,9 +44,14 @@ class HostPreferences @Inject constructor(
     companion object {
         private val BASE_URL_KEY = stringPreferencesKey("base_url")
         val DEFAULT_BASE_URL: String = if (BuildConfig.DEFAULT_API_HOST.isNotEmpty()) {
-            "https://${BuildConfig.DEFAULT_API_HOST}/"
+            BuildConfig.DEFAULT_API_HOST.toBaseUrl()
         } else {
             "https://wms.lw-hana.net/"
+        }
+
+        private fun String.toBaseUrl(): String {
+            val url = if (startsWith("http://") || startsWith("https://")) this else "https://$this"
+            return if (url.endsWith("/")) url else "$url/"
         }
     }
 }

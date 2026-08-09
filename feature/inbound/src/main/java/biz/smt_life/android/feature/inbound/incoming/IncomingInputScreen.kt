@@ -114,6 +114,7 @@ fun IncomingInputScreen(
 
     val schedule = state.selectedSchedule
     val product = state.selectedProduct
+    val quantityWarning = viewModel.quantityWarningMessage()
 
     // Show error message
     LaunchedEffect(state.errorMessage) {
@@ -257,7 +258,8 @@ fun IncomingInputScreen(
 
             // Arrival date display
             ArrivalDateBar(
-                arrivalDate = schedule.expectedArrivalDate
+                orderDate = schedule.orderDate,
+                expectedDate = schedule.expectedArrivalDate
                     ?: LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
             )
 
@@ -302,11 +304,16 @@ fun IncomingInputScreen(
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Quantity input (first)
-                QuantityInputField(
-                    value = state.inputQuantity,
-                    onValueChange = viewModel::onQuantityChange,
-                    expectedQuantity = schedule.remainingQuantity,
+                // Quantity input (case/piece)
+                CasePieceQuantityInputFields(
+                    caseValue = state.inputCaseQuantity,
+                    pieceValue = state.inputPieceQuantity,
+                    onCaseValueChange = viewModel::onCaseQuantityChange,
+                    onPieceValueChange = viewModel::onPieceQuantityChange,
+                    expectedQuantity = schedule.remainingPieceQuantity ?: schedule.remainingQuantity,
+                    capacityCase = schedule.capacityCase ?: product?.capacityCase,
+                    isUnplanned = schedule.isUnplanned,
+                    warningMessage = quantityWarning,
                     focusRequester = quantityFocusRequester,
                     onFocusChanged = { if (it) currentFieldIndex = 0 }
                 )
@@ -383,7 +390,10 @@ private fun ProductInfoHeader(
 }
 
 @Composable
-private fun ArrivalDateBar(arrivalDate: String) {
+private fun ArrivalDateBar(
+    orderDate: String?,
+    expectedDate: String
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.tertiaryContainer
@@ -395,7 +405,10 @@ private fun ArrivalDateBar(arrivalDate: String) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "入荷日: $arrivalDate",
+                text = listOfNotNull(
+                    orderDate?.let { "発注日: $it" },
+                    "予定日: $expectedDate"
+                ).joinToString("  "),
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Bold
                 )
@@ -547,27 +560,23 @@ private fun LocationInputField(
 }
 
 @Composable
-private fun QuantityInputField(
-    value: String,
-    onValueChange: (String) -> Unit,
+private fun CasePieceQuantityInputFields(
+    caseValue: String,
+    pieceValue: String,
+    onCaseValueChange: (String) -> Unit,
+    onPieceValueChange: (String) -> Unit,
     expectedQuantity: Int,
+    capacityCase: Int?,
+    isUnplanned: Boolean,
+    warningMessage: String?,
     focusRequester: FocusRequester,
     onFocusChanged: (Boolean) -> Unit
 ) {
-    val currentQty = value.toIntOrNull() ?: 0
-    val isValid = currentQty > 0 && currentQty <= expectedQuantity
-
-    // Use TextFieldValue for select-all on focus
-    var textFieldValue by remember(value) {
-        mutableStateOf(TextFieldValue(value, TextRange(0, value.length)))
-    }
-
-    // Update when external value changes
-    LaunchedEffect(value) {
-        if (textFieldValue.text != value) {
-            textFieldValue = TextFieldValue(value, TextRange(0, value.length))
-        }
-    }
+    val capacity = capacityCase?.takeIf { it > 1 } ?: 1
+    val caseQty = caseValue.toIntOrNull() ?: 0
+    val pieceQty = pieceValue.toIntOrNull() ?: 0
+    val totalPiece = caseQty * capacity + pieceQty
+    val isValid = totalPiece > 0
 
     Column {
         Row(
@@ -584,48 +593,71 @@ private fun QuantityInputField(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "入庫予定 : $expectedQuantity",
+                text = if (isUnplanned) {
+                    "入庫数量"
+                } else {
+                    "入庫予定 : ${formatCasePiece(expectedQuantity, capacityCase)}"
+                },
                 style = MaterialTheme.typography.labelMedium
             )
         }
 
-        OutlinedTextField(
-            value = textFieldValue,
-            onValueChange = { newValue ->
-                textFieldValue = newValue
-                onValueChange(newValue.text)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .onFocusChanged { focusState ->
-                    onFocusChanged(focusState.isFocused)
-                    // Select all when gaining focus
-                    if (focusState.isFocused) {
-                        textFieldValue = textFieldValue.copy(
-                            selection = TextRange(0, textFieldValue.text.length)
-                        )
-                    }
-                },
-            placeholder = { Text("入庫数量") },
-            singleLine = true,
-            isError = value.isNotEmpty() && !isValid,
-            supportingText = if (value.isNotEmpty() && !isValid) {
-                {
-                    Text(
-                        text = when {
-                            currentQty <= 0 -> "1以上の数量を入力してください"
-                            currentQty > expectedQuantity -> "予定数を超えています"
-                            else -> ""
-                        },
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            } else null,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Number,
-                imeAction = ImeAction.Next
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = caseValue,
+                onValueChange = onCaseValueChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { focusState -> onFocusChanged(focusState.isFocused) },
+                label = { Text("ケース") },
+                singleLine = true,
+                isError = (caseValue.isNotEmpty() || pieceValue.isNotEmpty()) && !isValid,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Next
+                )
             )
+            OutlinedTextField(
+                value = pieceValue,
+                onValueChange = onPieceValueChange,
+                modifier = Modifier.weight(1f),
+                label = { Text("バラ") },
+                singleLine = true,
+                isError = (caseValue.isNotEmpty() || pieceValue.isNotEmpty()) && !isValid,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Next
+                )
+            )
+        }
+
+        Text(
+            text = "総バラ: $totalPiece",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp)
         )
+
+        if ((caseValue.isNotEmpty() || pieceValue.isNotEmpty()) && !isValid) {
+            Text(
+                text = "1以上の数量を入力してください",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+
+        warningMessage?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.tertiary,
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
     }
+}
+
+private fun formatCasePiece(quantity: Int, capacityCase: Int?): String {
+    val capacity = capacityCase?.takeIf { it > 1 } ?: return "バラ $quantity"
+    return "ケース ${quantity / capacity} / バラ ${quantity % capacity}"
 }

@@ -1,6 +1,5 @@
 package biz.smt_life.android.feature.inbound.incoming
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -19,10 +19,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -33,8 +29,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,23 +86,9 @@ fun ScheduleListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "${state.selectedWarehouse?.name ?: ""} 入庫処理",
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+            IncomingCompactTopBar(
+                title = "${state.selectedWarehouse?.name ?: ""} 入庫処理",
+                onNavigateBack = onNavigateBack
             )
         },
         bottomBar = {
@@ -188,7 +168,7 @@ fun ScheduleListScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 4.dp)
+                    contentPadding = PaddingValues(vertical = 2.dp)
                 ) {
                     itemsIndexed(
                         items = product.schedules,
@@ -196,6 +176,7 @@ fun ScheduleListScreen(
                     ) { index, schedule ->
                         ScheduleListItem(
                             schedule = schedule,
+                            capacityCase = product.capacityCase,
                             isSelected = index == state.selectedScheduleIndex,
                             onClick = {
                                 SoundUtils.playBeep()
@@ -214,13 +195,45 @@ fun ScheduleListScreen(
 }
 
 @Composable
+private fun IncomingCompactTopBar(
+    title: String,
+    onNavigateBack: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onNavigateBack,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
 private fun ProductSummaryHeader(
     product: biz.smt_life.android.core.domain.model.IncomingProduct
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         // JAN code and item code
         Row(
@@ -232,14 +245,16 @@ private fun ProductSummaryHeader(
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold
-                )
+                ),
+                maxLines = 1
             )
             Text(
                 text = product.itemCode,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontFamily = FontFamily.Monospace
                 ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
             )
         }
 
@@ -248,7 +263,7 @@ private fun ProductSummaryHeader(
         // Item name
         Text(
             text = product.itemName,
-            style = MaterialTheme.typography.titleMedium.copy(
+            style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.Bold
             ),
             color = MaterialTheme.colorScheme.primary,
@@ -256,26 +271,27 @@ private fun ProductSummaryHeader(
             overflow = TextOverflow.Ellipsis
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
-        // Volume and capacity
+        // Packaging and total piece count
         Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (product.fullVolume != null) {
-                Text(
-                    text = "容量: ${product.fullVolume}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (product.capacityCase != null) {
-                Text(
-                    text = "入数: ${product.capacityCase}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                text = "規格: ${product.packaging?.takeIf { it.isNotBlank() } ?: "-"}",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "残総バラ: ${product.totalRemainingQuantity}",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
         }
     }
 }
@@ -287,25 +303,34 @@ private fun TotalQuantityBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.tertiaryContainer
+        color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "合計入荷予定数",
-                style = MaterialTheme.typography.bodyMedium
+                text = "合計総バラ",
+                style = MaterialTheme.typography.bodySmall
             )
-            Text(
-                text = "$totalRemaining / $totalExpected",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = "残総バラ $totalRemaining",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold
+                    )
                 )
-            )
+                Text(
+                    text = "予定総バラ $totalExpected",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -313,119 +338,197 @@ private fun TotalQuantityBar(
 @Composable
 private fun ScheduleListItem(
     schedule: IncomingSchedule,
+    capacityCase: Int?,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val canWork = schedule.status.canStartWork
+    val canWork = schedule.status.canStartWork || schedule.isUnplanned
 
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = canWork, onClick = onClick)
-            .background(
-                when {
-                    isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                    !canWork -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    else -> MaterialTheme.colorScheme.surface
-                }
-            )
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Top
-    ) {
-        // Left side: Schedule info
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            // Warehouse name
-            Text(
-                text = schedule.warehouseName ?: "",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = FontWeight.Bold
-                )
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            // Expected date
-            schedule.expectedArrivalDate?.let { dateStr ->
-                val formattedDate = formatDateForDisplay(dateStr)
-                Text(
-                    text = "予定日: $formattedDate",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            // Location
-            schedule.location?.let { location ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .width(16.dp)
-                            .height(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "ロケ: ${location.fullDisplayName}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            // Status badge
-            if (!canWork) {
-                Spacer(modifier = Modifier.height(2.dp))
-                StatusBadge(status = schedule.status)
-            }
+            .clickable(enabled = canWork, onClick = onClick),
+        color = when {
+            isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            !canWork -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            else -> MaterialTheme.colorScheme.surface
         }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            // Left side: Schedule info
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                // Warehouse name
+                Text(
+                    text = schedule.warehouseName ?: if (schedule.isUnplanned) "予定なし入荷" else "",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
 
-        // Right side: Quantity button
-        QuantityButton(
-            remainingQuantity = schedule.remainingQuantity,
-            expectedQuantity = schedule.expectedQuantity,
-            enabled = canWork,
-            onClick = onClick
-        )
+                Spacer(modifier = Modifier.height(2.dp))
+
+                if (schedule.inspectionPolicy == "EOS_HISTORY_ONLY" || schedule.isEosSent) {
+                    Text(
+                        text = "EOS履歴のみ",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        maxLines = 1
+                    )
+                } else if (schedule.isUnplanned) {
+                    Text(
+                        text = "予定なし入荷",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        maxLines = 1
+                    )
+                }
+
+                // Order and expected dates
+                val orderDateText = schedule.orderDate?.let { "発注 ${formatDateForDisplay(it)}" }
+                val expectedDateText = schedule.expectedArrivalDate?.let { "予定 ${formatDateForDisplay(it)}" }
+                if (orderDateText != null || expectedDateText != null) {
+                    Text(
+                        text = listOfNotNull(orderDateText, expectedDateText).joinToString("  "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Location
+                schedule.location?.let { location ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = location.fullDisplayName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Status badge
+                if (!canWork) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    StatusBadge(status = schedule.status)
+                }
+            }
+
+            // Right side: Quantity summary
+            QuantitySummary(
+                remainingQuantity = schedule.remainingPieceQuantity ?: schedule.remainingQuantity,
+                expectedQuantity = schedule.expectedPieceQuantity ?: schedule.expectedQuantity,
+                capacityCase = capacityCase,
+                isUnplanned = schedule.isUnplanned,
+                enabled = canWork
+            )
+        }
     }
 }
 
 @Composable
-private fun QuantityButton(
+private fun QuantitySummary(
     remainingQuantity: Int,
     expectedQuantity: Int,
-    enabled: Boolean,
-    onClick: () -> Unit
+    capacityCase: Int?,
+    isUnplanned: Boolean,
+    enabled: Boolean
 ) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        ),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+    val remaining = splitCasePiece(remainingQuantity, capacityCase)
+    val expected = splitCasePiece(expectedQuantity, capacityCase)
+
+    Surface(
+        modifier = Modifier.width(108.dp),
+        color = if (enabled) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        shape = MaterialTheme.shapes.small
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             Text(
-                text = "予定数",
+                text = if (isUnplanned) "予定なし" else "残総バラ",
                 style = MaterialTheme.typography.labelSmall
             )
-            Text(
-                text = remainingQuantity.toString(),
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Bold
+            if (isUnplanned) {
+                Text(
+                    text = "入力",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1
                 )
-            )
+                Text(
+                    text = "総バラ入力",
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1
+                )
+            } else {
+                Text(
+                    text = remainingQuantity.toString(),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1
+                )
+                if (remaining == null) {
+                    Text(
+                        text = "バラ $remainingQuantity",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1
+                    )
+                } else {
+                    Text(
+                        text = "ケース ${remaining.first}",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1
+                    )
+                    Text(
+                        text = "バラ ${remaining.second}",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1
+                    )
+                }
+            }
+            if (!isUnplanned) {
+                val expectedText = expected?.let { "${it.first}/${it.second}" } ?: expectedQuantity.toString()
+                Text(
+                    text = "予定総バラ $expectedQuantity",
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (expected != null) {
+                    Text(
+                        text = "予定 $expectedText",
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }
@@ -453,13 +556,18 @@ private fun StatusBadge(status: IncomingScheduleStatus) {
 }
 
 /**
- * Format date string for display (MM月DD日).
+ * Format date string for display (MM/DD).
  */
 private fun formatDateForDisplay(dateStr: String): String {
     return try {
         val date = LocalDate.parse(dateStr)
-        date.format(DateTimeFormatter.ofPattern("MM月dd日"))
+        date.format(DateTimeFormatter.ofPattern("MM/dd"))
     } catch (e: Exception) {
         dateStr
     }
+}
+
+private fun splitCasePiece(quantity: Int, capacityCase: Int?): Pair<Int, Int>? {
+    val capacity = capacityCase?.takeIf { it > 1 } ?: return null
+    return quantity / capacity to quantity % capacity
 }

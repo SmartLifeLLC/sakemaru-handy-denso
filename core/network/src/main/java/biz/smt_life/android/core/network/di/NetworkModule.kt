@@ -5,13 +5,16 @@ import biz.smt_life.android.core.domain.repository.InboundRepository
 import biz.smt_life.android.core.domain.repository.IncomingRepository
 import biz.smt_life.android.core.domain.repository.MainRepository
 import biz.smt_life.android.core.domain.repository.OutboundRepository
+import biz.smt_life.android.core.domain.repository.OutboundInspectionRepository
 import biz.smt_life.android.core.domain.repository.OutboundCourseRepository
 import biz.smt_life.android.core.domain.repository.PickingTaskRepository
 import biz.smt_life.android.core.domain.repository.ProfileRepository
 import biz.smt_life.android.core.network.BuildConfig
 import biz.smt_life.android.core.network.api.AuthService
 import biz.smt_life.android.core.network.api.IncomingApi
+import biz.smt_life.android.core.network.api.InventoryCountApi
 import biz.smt_life.android.core.network.api.PickingApi
+import biz.smt_life.android.core.network.api.OutboundInspectionApi
 import biz.smt_life.android.core.network.fake.FakeInboundRepository
 import biz.smt_life.android.core.network.fake.FakeMainRepository
 import biz.smt_life.android.core.network.fake.FakeOutboundRepository
@@ -22,6 +25,7 @@ import biz.smt_life.android.core.network.interceptor.AuthInterceptor
 import biz.smt_life.android.core.network.interceptor.BaseUrlInterceptor
 import biz.smt_life.android.core.network.repository.AuthRepositoryImpl
 import biz.smt_life.android.core.network.repository.IncomingRepositoryImpl
+import biz.smt_life.android.core.network.repository.OutboundInspectionRepositoryImpl
 import biz.smt_life.android.core.network.repository.PickingTaskRepositoryImpl
 import biz.smt_life.android.core.ui.HostPreferences
 import biz.smt_life.android.core.ui.TokenManager
@@ -139,6 +143,18 @@ object NetworkProviderModule {
 
     @Provides
     @Singleton
+    fun provideInventoryCountApi(retrofit: Retrofit): InventoryCountApi {
+        return retrofit.create(InventoryCountApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideOutboundInspectionApi(retrofit: Retrofit): OutboundInspectionApi {
+        return retrofit.create(OutboundInspectionApi::class.java)
+    }
+
+    @Provides
+    @Singleton
     fun provideErrorMapper(): biz.smt_life.android.core.network.ErrorMapper {
         return biz.smt_life.android.core.network.ErrorMapper
     }
@@ -171,6 +187,12 @@ abstract class NetworkBindingModule {
     abstract fun bindOutboundCourseRepository(
         fakeOutboundCourseRepository: FakeOutboundCourseRepository
     ): OutboundCourseRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindOutboundInspectionRepository(
+        outboundInspectionRepositoryImpl: OutboundInspectionRepositoryImpl
+    ): OutboundInspectionRepository
 
     @Binds
     @Singleton
