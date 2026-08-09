@@ -8,6 +8,7 @@ import biz.smt_life.android.core.domain.model.Warehouse
 import biz.smt_life.android.core.domain.repository.AuthRepository
 import biz.smt_life.android.core.domain.repository.IncomingRepository
 import biz.smt_life.android.core.ui.HostPreferences
+import biz.smt_life.android.core.ui.MasterDataPreferences
 import biz.smt_life.android.core.ui.TokenManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -27,7 +28,8 @@ class MainViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val incomingRepository: IncomingRepository,
     private val tokenManager: TokenManager,
-    private val hostPreferences: HostPreferences
+    private val hostPreferences: HostPreferences,
+    private val masterDataPreferences: MasterDataPreferences
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<MainUiState>(MainUiState.Loading)
@@ -77,11 +79,24 @@ class MainViewModel @Inject constructor(
 
     fun selectWarehouse(warehouse: IncomingWarehouse) {
         tokenManager.setDefaultWarehouseId(warehouse.id)
-        _uiState.value = MainUiState.Loading
-        loadData()
+        val current = _uiState.value
+        if (current is MainUiState.Ready) {
+            _uiState.value = current.copy(
+                warehouse = Warehouse(warehouse.id.toString(), warehouse.name),
+                warehouseId = warehouse.id.toString(),
+                showWarehouseDialog = false
+            )
+        }
+        refreshMasterData()
     }
 
-    private fun loadData() {
+    fun refreshMasterData() {
+        viewModelScope.launch {
+            refreshMasterDataInternal()
+        }
+    }
+
+    private fun loadData(autoRefreshIfStale: Boolean = true) {
         viewModelScope.launch {
             try {
                 val pickerCode = tokenManager.getPickerCode()
@@ -92,6 +107,7 @@ class MainViewModel @Inject constructor(
                 val hostUrl = hostPreferences.baseUrl.first()
 
                 val warehouses = incomingRepository.getWarehouses().getOrDefault(emptyList())
+                val masterLastUpdatedAtMillis = masterDataPreferences.getLastUpdatedAtMillisOnce()
 
                 val matched = warehouses.firstOrNull { it.id == warehouseId }
                 val warehouse = if (matched != null) {
@@ -120,14 +136,98 @@ class MainViewModel @Inject constructor(
                     appVersion = appVersion,
                     authKey = authToken,
                     warehouseId = warehouseId.toString(),
-                    warehouses = warehouses
+                    warehouses = warehouses,
+                    masterLastUpdatedAt = formatMasterLastUpdatedAt(masterLastUpdatedAtMillis)
                 )
+
+                if (autoRefreshIfStale && shouldRefreshMaster(masterLastUpdatedAtMillis)) {
+                    refreshMasterDataInternal()
+                }
             } catch (e: Exception) {
                 _uiState.value = MainUiState.Error(
                     message = e.message ?: "不明なエラーが発生しました"
                 )
             }
         }
+    }
+
+    private suspend fun refreshMasterDataInternal() {
+        val current = _uiState.value
+        if (current is MainUiState.Ready && current.isMasterUpdating) {
+            return
+        }
+
+        if (current is MainUiState.Ready) {
+            _uiState.value = current.copy(isMasterUpdating = true, showWarehouseDialog = false)
+        }
+
+        try {
+            val warehouseId = tokenManager.getDefaultWarehouseId()
+            val warehouses = incomingRepository.getWarehouses().getOrThrow()
+            val matched = warehouses.firstOrNull { it.id == warehouseId }
+            if (matched != null) {
+                incomingRepository.refreshIncomingItemMaster(matched.id).getOrThrow()
+            }
+
+            val updatedAtMillis = System.currentTimeMillis()
+            masterDataPreferences.setLastUpdatedAtMillis(updatedAtMillis)
+
+            val pickerCode = tokenManager.getPickerCode()
+            val pickerName = tokenManager.getPickerName()
+            val authToken = tokenManager.getToken() ?: ""
+            val hostUrl = hostPreferences.baseUrl.first()
+            val warehouse = if (matched != null) {
+                Warehouse(matched.id.toString(), matched.name)
+            } else if (warehouseId > 0) {
+                Warehouse(warehouseId.toString(), "倉庫 #$warehouseId")
+            } else {
+                Warehouse("0", "未設定")
+            }
+
+            _uiState.value = MainUiState.Ready(
+                pickerCode = pickerCode,
+                pickerName = pickerName,
+                warehouse = warehouse,
+                pendingCounts = PendingCounts(
+                    inbound = 0,
+                    outbound = 0,
+                    inventory = 0
+                ),
+                currentDate = getCurrentDate(),
+                hostUrl = hostUrl,
+                appVersion = "Ver.1.4.0",
+                authKey = authToken,
+                warehouseId = warehouseId.toString(),
+                warehouses = warehouses,
+                isMasterUpdating = false,
+                masterLastUpdatedAt = formatMasterLastUpdatedAt(updatedAtMillis)
+            )
+        } catch (e: Exception) {
+            val latest = _uiState.value
+            if (latest is MainUiState.Ready) {
+                _uiState.value = latest.copy(isMasterUpdating = false)
+            } else {
+                _uiState.value = MainUiState.Error(
+                    message = e.message ?: "マスタ更新に失敗しました"
+                )
+            }
+        }
+    }
+
+    private fun shouldRefreshMaster(lastUpdatedAtMillis: Long?): Boolean {
+        if (lastUpdatedAtMillis == null) {
+            return true
+        }
+        return System.currentTimeMillis() - lastUpdatedAtMillis >= MASTER_REFRESH_INTERVAL_MILLIS
+    }
+
+    private fun formatMasterLastUpdatedAt(updatedAtMillis: Long?): String? {
+        if (updatedAtMillis == null) {
+            return null
+        }
+        return SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.JAPAN).apply {
+            timeZone = TimeZone.getTimeZone("Asia/Tokyo")
+        }.format(Date(updatedAtMillis))
     }
 
     private fun getCurrentDate(): String {
@@ -143,5 +243,9 @@ class MainViewModel @Inject constructor(
         } catch (e: Exception) {
             SimpleDateFormat("yyyy/MM/dd", Locale.JAPAN).format(Date())
         }
+    }
+
+    companion object {
+        private const val MASTER_REFRESH_INTERVAL_MILLIS = 24L * 60L * 60L * 1000L
     }
 }

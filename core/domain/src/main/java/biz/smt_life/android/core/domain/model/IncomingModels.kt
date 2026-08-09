@@ -51,6 +51,13 @@ data class IncomingSnapshot(
     val locations: List<Location> = emptyList()
 )
 
+data class IncomingItemMaster(
+    val warehouseId: Int,
+    val masterDate: String,
+    val generatedAt: String? = null,
+    val products: List<IncomingProduct> = emptyList()
+)
+
 // ============================================================
 // Incoming Product (Product with schedules)
 // ============================================================
@@ -69,6 +76,7 @@ data class IncomingProduct(
     val volume: String? = null,
     val volumeUnit: String? = null,
     val capacityCase: Int? = null,
+    val packaging: String? = null,
     val temperatureType: String? = null,
     val images: List<String> = emptyList(),
     val defaultLocation: Location? = null,

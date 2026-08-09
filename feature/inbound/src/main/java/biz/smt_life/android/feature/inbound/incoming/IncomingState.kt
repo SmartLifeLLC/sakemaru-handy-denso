@@ -24,6 +24,7 @@ data class IncomingState(
 
     // Product list
     val syncedProducts: List<IncomingProduct> = emptyList(),
+    val itemMasterProducts: List<IncomingProduct> = emptyList(),
     val syncedLocations: List<Location> = emptyList(),
     val products: List<IncomingProduct> = emptyList(),
     val searchQuery: String = "",
@@ -31,6 +32,10 @@ data class IncomingState(
     val workingScheduleIds: Set<Int> = emptySet(),
     val hasSyncedIncomingData: Boolean = false,
     val isSyncingIncomingData: Boolean = false,
+    val isSyncingItemMaster: Boolean = false,
+    val itemMasterSyncedDate: String? = null,
+    val showItemMasterRefreshPrompt: Boolean = false,
+    val pendingItemMasterRefreshCode: String? = null,
     val lastSyncedAt: String? = null,
     val inspectionDate: String? = null,
     val clientBatchUuid: String = java.util.UUID.randomUUID().toString(),

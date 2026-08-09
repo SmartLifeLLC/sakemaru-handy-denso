@@ -1,9 +1,11 @@
 package biz.smt_life.android.core.network.repository
 
+import android.content.Context
 import biz.smt_life.android.core.domain.model.IncomingInspectionBatchSyncData
 import biz.smt_life.android.core.domain.model.IncomingInspectionBatchSyncResult
 import biz.smt_life.android.core.domain.model.IncomingInspectionDetailData
 import biz.smt_life.android.core.domain.model.IncomingInspectionDetailSyncResult
+import biz.smt_life.android.core.domain.model.IncomingItemMaster
 import biz.smt_life.android.core.domain.model.IncomingItemQuantityCode
 import biz.smt_life.android.core.domain.model.IncomingProduct
 import biz.smt_life.android.core.domain.model.IncomingQuantityType
@@ -37,6 +39,7 @@ import biz.smt_life.android.core.network.model.IncomingInspectionBatchSyncReques
 import biz.smt_life.android.core.network.model.IncomingInspectionBatchSyncResponse
 import biz.smt_life.android.core.network.model.IncomingInspectionDetailRequest
 import biz.smt_life.android.core.network.model.IncomingInspectionDetailResponse
+import biz.smt_life.android.core.network.model.IncomingItemMasterResponse
 import biz.smt_life.android.core.network.model.IncomingProductResponse
 import biz.smt_life.android.core.network.model.IncomingScheduleResponse
 import biz.smt_life.android.core.network.model.IncomingSnapshotItemResponse
@@ -57,6 +60,12 @@ import biz.smt_life.android.core.network.model.StockLocationResponse
 import biz.smt_life.android.core.network.model.UpdateWorkItemRequest
 import biz.smt_life.android.core.network.model.WarehouseResponse
 import biz.smt_life.android.core.network.model.WorkItemScheduleResponse
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -66,9 +75,15 @@ import javax.inject.Singleton
  */
 @Singleton
 class IncomingRepositoryImpl @Inject constructor(
+    @param:ApplicationContext private val context: Context,
     private val incomingApi: IncomingApi,
-    private val errorMapper: ErrorMapper
+    private val errorMapper: ErrorMapper,
+    private val json: Json
 ) : IncomingRepository {
+    private val itemMasterPreferences = context.getSharedPreferences(
+        ITEM_MASTER_CACHE_NAME,
+        Context.MODE_PRIVATE
+    )
 
     // ============================================================
     // Warehouse Operations
@@ -343,9 +358,41 @@ class IncomingRepositoryImpl @Inject constructor(
             )
 
             if (response.isSuccess && response.result?.data != null) {
-                Result.success(response.result.data.toDomainModel(warehouseId))
+                val cachedMaster = loadCachedIncomingItemMaster(warehouseId)?.products.orEmpty()
+                Result.success(response.result.data.toDomainModel(warehouseId, cachedMaster))
             } else {
                 val errorMessage = extractErrorMessage(response.result, "入荷検品データの同期に失敗しました")
+                Result.failure(Exception(errorMessage))
+            }
+        } catch (e: Exception) {
+            val mappedException = errorMapper.mapException(e)
+            Result.failure(mappedException)
+        }
+    }
+
+    override suspend fun ensureIncomingItemMaster(warehouseId: Int): Result<IncomingItemMaster> {
+        val cached = loadCachedIncomingItemMasterCache(warehouseId)
+        if (cached != null && cached.cachedDate == LocalDate.now().toString()) {
+            return Result.success(cached.response.toDomainModel(warehouseId))
+        }
+
+        val refreshed = refreshIncomingItemMaster(warehouseId)
+        return if (refreshed.isFailure && cached != null) {
+            Result.success(cached.response.toDomainModel(warehouseId))
+        } else {
+            refreshed
+        }
+    }
+
+    override suspend fun refreshIncomingItemMaster(warehouseId: Int): Result<IncomingItemMaster> {
+        return try {
+            val response = incomingApi.getIncomingItemMaster(warehouseId)
+
+            if (response.isSuccess && response.result?.data != null) {
+                persistIncomingItemMaster(warehouseId, response.result.data)
+                Result.success(response.result.data.toDomainModel(warehouseId))
+            } else {
+                val errorMessage = extractErrorMessage(response.result, "商品マスタの取得に失敗しました")
                 Result.failure(Exception(errorMessage))
             }
         } catch (e: Exception) {
@@ -398,6 +445,31 @@ class IncomingRepositoryImpl @Inject constructor(
         }
     }
 
+    private fun loadCachedIncomingItemMaster(warehouseId: Int): IncomingItemMaster? {
+        return loadCachedIncomingItemMasterCache(warehouseId)?.response?.toDomainModel(warehouseId)
+    }
+
+    private fun loadCachedIncomingItemMasterCache(warehouseId: Int): IncomingItemMasterCache? {
+        val raw = itemMasterPreferences.getString(itemMasterCacheKey(warehouseId), null) ?: return null
+        return runCatching { json.decodeFromString<IncomingItemMasterCache>(raw) }
+            .getOrNull()
+            ?.takeIf { it.warehouseId == warehouseId }
+    }
+
+    private fun persistIncomingItemMaster(warehouseId: Int, response: IncomingItemMasterResponse) {
+        val cache = IncomingItemMasterCache(
+            warehouseId = warehouseId,
+            cachedDate = LocalDate.now().toString(),
+            response = response
+        )
+        itemMasterPreferences
+            .edit()
+            .putString(itemMasterCacheKey(warehouseId), json.encodeToString(cache))
+            .apply()
+    }
+
+    private fun itemMasterCacheKey(warehouseId: Int): String = "$ITEM_MASTER_CACHE_PREFIX$warehouseId"
+
     // ============================================================
     // Mapping Functions
     // ============================================================
@@ -423,7 +495,10 @@ class IncomingRepositoryImpl @Inject constructor(
         )
     }
 
-    private fun IncomingSnapshotResponse.toDomainModel(workWarehouseId: Int): IncomingSnapshot {
+    private fun IncomingSnapshotResponse.toDomainModel(
+        workWarehouseId: Int,
+        cachedMasterProducts: List<IncomingProduct>
+    ): IncomingSnapshot {
         val scheduleGroups = schedules
             .mapNotNull { schedule ->
                 val item = schedule.item ?: return@mapNotNull null
@@ -431,22 +506,27 @@ class IncomingRepositoryImpl @Inject constructor(
             }
             .groupBy({ it.first }, { it.second })
 
-        val itemMap = linkedMapOf<Int, IncomingSnapshotItemResponse>()
+        val scheduleItemMap = linkedMapOf<Int, IncomingSnapshotItemResponse>()
         schedules.forEach { schedule ->
-            schedule.item?.let { itemMap[it.id] = it }
+            schedule.item?.let { scheduleItemMap[it.id] = it }
         }
-        items.forEach { itemMap[it.id] = it }
+        val cachedMasterById = cachedMasterProducts.associateBy { it.itemId }
 
-        val products = itemMap.values.map { item ->
+        val products = scheduleItemMap.values.map { item ->
             val productSchedules = scheduleGroups[item.id].orEmpty()
-            val schedulesForProduct = productSchedules.ifEmpty {
-                listOf(item.toUnplannedSchedule(workWarehouseId))
-            }
+            val schedulesForProduct = productSchedules.ifEmpty { listOf(item.toUnplannedSchedule(workWarehouseId)) }
             val expectedTotal = schedulesForProduct.sumOf { it.expectedPieceQuantity ?: it.expectedQuantity }
             val receivedTotal = schedulesForProduct.sumOf { it.receivedPieceQuantity ?: it.receivedQuantity }
             val remainingTotal = schedulesForProduct.sumOf { it.remainingPieceQuantity ?: it.remainingQuantity }
 
-            item.toIncomingProduct(
+            val baseProduct = cachedMasterById[item.id] ?: item.toIncomingProduct(
+                schedules = emptyList(),
+                expectedTotal = 0,
+                receivedTotal = 0,
+                remainingTotal = 0
+            )
+
+            baseProduct.withSchedules(
                 schedules = schedulesForProduct,
                 expectedTotal = expectedTotal,
                 receivedTotal = receivedTotal,
@@ -461,6 +541,48 @@ class IncomingRepositoryImpl @Inject constructor(
             matchingWarehouseIds = rules?.matchingWarehouseIds.orEmpty(),
             products = products,
             locations = locations.map { it.toDomainModel() }
+        )
+    }
+
+    private fun IncomingItemMasterResponse.toDomainModel(warehouseId: Int): IncomingItemMaster {
+        return IncomingItemMaster(
+            warehouseId = warehouse?.id ?: warehouseId,
+            masterDate = masterDate.ifBlank { LocalDate.now().toString() },
+            generatedAt = generatedAt,
+            products = items.map { item ->
+                item.toIncomingProduct(
+                    schedules = listOf(item.toUnplannedSchedule(warehouseId)),
+                    expectedTotal = 0,
+                    receivedTotal = 0,
+                    remainingTotal = 0
+                )
+            }
+        )
+    }
+
+    private fun IncomingProduct.withSchedules(
+        schedules: List<IncomingSchedule>,
+        expectedTotal: Int,
+        receivedTotal: Int,
+        remainingTotal: Int
+    ): IncomingProduct {
+        return copy(
+            totalExpectedQuantity = expectedTotal,
+            totalReceivedQuantity = receivedTotal,
+            totalRemainingQuantity = remainingTotal,
+            warehouses = schedules
+                .groupBy { it.warehouseId }
+                .map { (warehouseId, warehouseSchedules) ->
+                    IncomingWarehouseSummary(
+                        warehouseId = warehouseId,
+                        warehouseCode = "",
+                        warehouseName = warehouseSchedules.firstOrNull()?.warehouseName.orEmpty(),
+                        expectedQuantity = warehouseSchedules.sumOf { it.expectedPieceQuantity ?: it.expectedQuantity },
+                        receivedQuantity = warehouseSchedules.sumOf { it.receivedPieceQuantity ?: it.receivedQuantity },
+                        remainingQuantity = warehouseSchedules.sumOf { it.remainingPieceQuantity ?: it.remainingQuantity }
+                    )
+                },
+            schedules = schedules
         )
     }
 
@@ -487,6 +609,7 @@ class IncomingRepositoryImpl @Inject constructor(
             volume = volume,
             volumeUnit = volumeUnit,
             capacityCase = capacityCase,
+            packaging = packaging,
             temperatureType = temperatureType,
             defaultLocation = defaultLocation?.toDomainModel(),
             totalExpectedQuantity = expectedTotal,
@@ -570,6 +693,7 @@ class IncomingRepositoryImpl @Inject constructor(
             volume = volume,
             volumeUnit = volumeUnit,
             capacityCase = capacityCase,
+            packaging = packaging,
             temperatureType = temperatureType,
             images = images,
             defaultLocation = defaultLocation?.toDomainModel(),
@@ -817,4 +941,16 @@ class IncomingRepositoryImpl @Inject constructor(
             shortagePieceQuantity = shortagePieceQuantity
         )
     }
+
+    private companion object {
+        const val ITEM_MASTER_CACHE_NAME = "incoming_item_master_cache"
+        const val ITEM_MASTER_CACHE_PREFIX = "incoming_item_master_v2_"
+    }
 }
+
+@Serializable
+private data class IncomingItemMasterCache(
+    val warehouseId: Int,
+    val cachedDate: String,
+    val response: IncomingItemMasterResponse
+)

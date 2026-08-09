@@ -49,6 +49,7 @@ data class IncomingProductResponse(
     val volume: String? = null,
     @SerialName("volume_unit") val volumeUnit: String? = null,
     @SerialName("capacity_case") val capacityCase: Int? = null,
+    val packaging: String? = null,
     @SerialName("temperature_type") val temperatureType: String? = null,
     val images: List<String> = emptyList(),
     @SerialName("default_location") val defaultLocation: LocationResponse? = null,
@@ -108,7 +109,18 @@ data class IncomingSnapshotRulesResponse(
     @SerialName("eos_confirmed_index_days") val eosConfirmedIndexDays: Int? = null,
     @SerialName("unplanned_order_source") val unplannedOrderSource: String? = null,
     @SerialName("quantity_input") val quantityInput: String? = null,
+    @SerialName("item_master_sync") val itemMasterSync: String? = null,
     @SerialName("matching_warehouse_ids") val matchingWarehouseIds: List<Int> = emptyList()
+)
+
+@Serializable
+data class IncomingItemMasterResponse(
+    val version: String? = null,
+    @SerialName("generated_at") val generatedAt: String? = null,
+    @SerialName("master_date") val masterDate: String = "",
+    val warehouse: WarehouseResponse? = null,
+    val rules: IncomingSnapshotRulesResponse? = null,
+    val items: List<IncomingSnapshotItemResponse> = emptyList()
 )
 
 @Serializable

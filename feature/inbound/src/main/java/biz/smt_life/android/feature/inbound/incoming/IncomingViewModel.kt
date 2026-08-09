@@ -105,6 +105,7 @@ class IncomingViewModel @Inject constructor(
             it.copy(
                 selectedWarehouse = warehouse,
                 syncedProducts = emptyList(),
+                itemMasterProducts = emptyList(),
                 syncedLocations = emptyList(),
                 products = emptyList(),
                 searchQuery = "",
@@ -115,9 +116,12 @@ class IncomingViewModel @Inject constructor(
                 clientBatchUuid = UUID.randomUUID().toString(),
                 pendingInspectionDetails = emptyList(),
                 syncResultDetails = emptyList(),
-                syncResultMessage = null
+                syncResultMessage = null,
+                showItemMasterRefreshPrompt = false,
+                pendingItemMasterRefreshCode = null
             )
         }
+        ensureItemMasterForWarehouse(warehouse.id)
     }
 
     /**
@@ -152,6 +156,7 @@ class IncomingViewModel @Inject constructor(
                             }
                         )
                     }
+                    selectedWarehouse?.let { ensureItemMasterForWarehouse(it.id) }
                 }
                 .onFailure { error ->
                     _state.update {
@@ -188,12 +193,15 @@ class IncomingViewModel @Inject constructor(
             _state.update {
                 it.copy(
                     isSyncingIncomingData = true,
+                    isSyncingItemMaster = true,
                     isLoadingProducts = true,
                     errorMessage = null
                 )
             }
 
             val inspectionDate = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+            val masterResult = repository.ensureIncomingItemMaster(warehouseId)
+            val itemMasterProducts = masterResult.getOrNull()?.products ?: _state.value.itemMasterProducts
             val snapshotResult = repository.getIncomingSnapshot(warehouseId, inspectionDate)
 
             snapshotResult
@@ -201,10 +209,13 @@ class IncomingViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             isSyncingIncomingData = false,
+                            isSyncingItemMaster = false,
                             isLoadingProducts = false,
                             syncedProducts = snapshot.products,
+                            itemMasterProducts = itemMasterProducts,
+                            itemMasterSyncedDate = masterResult.getOrNull()?.masterDate ?: it.itemMasterSyncedDate,
                             syncedLocations = snapshot.locations,
-                            products = filterProducts(snapshot.products, it.searchQuery),
+                            products = filterProducts(snapshot.products, itemMasterProducts, it.searchQuery),
                             workingScheduleIds = emptySet(),
                             hasSyncedIncomingData = true,
                             inspectionDate = snapshot.inspectionDate,
@@ -214,7 +225,9 @@ class IncomingViewModel @Inject constructor(
                             syncResultMessage = null,
                             lastSyncedAt = LocalDateTime.now().format(SYNCED_AT_FORMATTER),
                             selectedProductIndex = 0,
-                            successMessage = "入庫データを同期しました"
+                            successMessage = masterResult.exceptionOrNull()?.let { error ->
+                                "入庫データを同期しました。商品マスタ更新は失敗しました: ${mapErrorMessage(error)}"
+                            } ?: "入庫データを同期しました"
                         )
                     }
                 }
@@ -222,6 +235,7 @@ class IncomingViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             isSyncingIncomingData = false,
+                            isSyncingItemMaster = false,
                             isLoadingProducts = false,
                             errorMessage = mapErrorMessage(error)
                         )
@@ -243,7 +257,8 @@ class IncomingViewModel @Inject constructor(
      */
     private fun searchProducts(
         query: String,
-        clearQueryAfterSearch: Boolean = false
+        clearQueryAfterSearch: Boolean = false,
+        promptIfMissing: Boolean = false
     ) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
@@ -259,11 +274,18 @@ class IncomingViewModel @Inject constructor(
                         searchQuery = if (clearQueryAfterSearch) "" else it.searchQuery
                     )
                 } else {
+                    val filtered = filterProducts(it.syncedProducts, it.itemMasterProducts, query)
                     it.copy(
                         isSearching = false,
-                        products = filterProducts(it.syncedProducts, query),
+                        products = filtered,
                         selectedProductIndex = 0,
-                        searchQuery = if (clearQueryAfterSearch) "" else it.searchQuery
+                        searchQuery = if (clearQueryAfterSearch) "" else it.searchQuery,
+                        showItemMasterRefreshPrompt = promptIfMissing && query.isNotBlank() && filtered.isEmpty(),
+                        pendingItemMasterRefreshCode = if (promptIfMissing && query.isNotBlank() && filtered.isEmpty()) {
+                            query
+                        } else {
+                            it.pendingItemMasterRefreshCode
+                        }
                     )
                 }
             }
@@ -275,7 +297,135 @@ class IncomingViewModel @Inject constructor(
      */
     fun onProductBarcodeScan(barcode: String) {
         _state.update { it.copy(searchQuery = barcode) }
-        searchProducts(barcode, clearQueryAfterSearch = true)
+        searchProducts(barcode, clearQueryAfterSearch = true, promptIfMissing = true)
+    }
+
+    fun promptItemMasterRefreshIfSearchMissing() {
+        val state = _state.value
+        if (!state.hasSyncedIncomingData) {
+            _state.update { it.copy(errorMessage = "先にデータ同期を実行してください。") }
+            return
+        }
+
+        val query = state.searchQuery
+        if (query.isBlank()) return
+
+        val filtered = filterProducts(state.syncedProducts, state.itemMasterProducts, query)
+        _state.update {
+            it.copy(
+                products = filtered,
+                selectedProductIndex = 0,
+                showItemMasterRefreshPrompt = filtered.isEmpty(),
+                pendingItemMasterRefreshCode = if (filtered.isEmpty()) query else null
+            )
+        }
+    }
+
+    fun dismissItemMasterRefreshPrompt() {
+        _state.update {
+            it.copy(
+                showItemMasterRefreshPrompt = false,
+                pendingItemMasterRefreshCode = null
+            )
+        }
+    }
+
+    fun refreshItemMasterForMissingProduct() {
+        val warehouseId = _state.value.selectedWarehouse?.id
+        if (warehouseId == null) {
+            _state.update { it.copy(errorMessage = "作業倉庫が選択されていません。") }
+            return
+        }
+        if (!_state.value.hasSyncedIncomingData) {
+            _state.update { it.copy(errorMessage = "先にデータ同期を実行してください。") }
+            return
+        }
+
+        val query = _state.value.pendingItemMasterRefreshCode
+            ?: _state.value.searchQuery
+        if (query.isBlank()) {
+            dismissItemMasterRefreshPrompt()
+            return
+        }
+
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    isSyncingItemMaster = true,
+                    showItemMasterRefreshPrompt = false,
+                    errorMessage = null
+                )
+            }
+
+            repository.refreshIncomingItemMaster(warehouseId)
+                .onSuccess { itemMaster ->
+                    _state.update {
+                        val filtered = filterProducts(it.syncedProducts, itemMaster.products, query)
+                        it.copy(
+                            isSyncingItemMaster = false,
+                            itemMasterProducts = itemMaster.products,
+                            itemMasterSyncedDate = itemMaster.masterDate,
+                            products = filtered,
+                            selectedProductIndex = 0,
+                            searchQuery = query,
+                            pendingItemMasterRefreshCode = null,
+                            successMessage = if (filtered.isEmpty()) {
+                                "最新マスタを取得しましたが、商品が見つかりません。"
+                            } else {
+                                "商品マスタを更新しました。"
+                            }
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            isSyncingItemMaster = false,
+                            pendingItemMasterRefreshCode = null,
+                            errorMessage = "商品マスタの取得に失敗しました: ${mapErrorMessage(error)}"
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun ensureItemMasterForWarehouse(warehouseId: Int) {
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    isSyncingItemMaster = true,
+                    errorMessage = null
+                )
+            }
+
+            repository.ensureIncomingItemMaster(warehouseId)
+                .onSuccess { itemMaster ->
+                    _state.update {
+                        if (it.selectedWarehouse?.id != warehouseId) {
+                            it.copy(isSyncingItemMaster = false)
+                        } else {
+                            it.copy(
+                                isSyncingItemMaster = false,
+                                itemMasterProducts = itemMaster.products,
+                                itemMasterSyncedDate = itemMaster.masterDate,
+                                products = if (it.hasSyncedIncomingData) {
+                                    filterProducts(it.syncedProducts, itemMaster.products, it.searchQuery)
+                                } else {
+                                    emptyList()
+                                }
+                            )
+                        }
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            isSyncingItemMaster = false,
+                            errorMessage = "商品マスタの取得に失敗しました: ${mapErrorMessage(error)}"
+                        )
+                    }
+                }
+        }
     }
 
     fun prepareProductBarcodeScan() {
@@ -984,24 +1134,39 @@ class IncomingViewModel @Inject constructor(
         }
     }
 
-    private fun filterProducts(products: List<IncomingProduct>, query: String): List<IncomingProduct> {
+    private fun filterProducts(
+        scheduleProducts: List<IncomingProduct>,
+        itemMasterProducts: List<IncomingProduct>,
+        query: String
+    ): List<IncomingProduct> {
         val normalizedQuery = query.normalizeSearchKey()
-        if (normalizedQuery.isBlank()) return products
+        if (normalizedQuery.isBlank()) return scheduleProducts
 
-        return products.filter { product ->
-            product.itemCode.normalizeSearchKey().contains(normalizedQuery) ||
-                product.itemName.normalizeSearchKey().contains(normalizedQuery) ||
-                product.searchCode?.normalizeSearchKey()?.contains(normalizedQuery) == true ||
-                product.janCodes.any { it.normalizeSearchKey().contains(normalizedQuery) } ||
-                product.searchCodes.any { it.normalizeSearchKey().contains(normalizedQuery) } ||
-                product.itemQuantityCodes.any { quantityCode ->
-                    listOfNotNull(
-                        quantityCode.productCode,
-                        quantityCode.ownCode,
-                        quantityCode.quantityCode
-                    ).any { it.normalizeSearchKey().contains(normalizedQuery) }
-                }
-        }
+        val scheduleItemIds = scheduleProducts.map { it.itemId }.toSet()
+        val matchedSchedules = scheduleProducts.filter { it.matches(normalizedQuery) }
+        val matchedMaster = itemMasterProducts
+            .asSequence()
+            .filter { it.itemId !in scheduleItemIds }
+            .filter { it.matches(normalizedQuery) }
+            .take(50)
+            .toList()
+
+        return matchedSchedules + matchedMaster
+    }
+
+    private fun IncomingProduct.matches(normalizedQuery: String): Boolean {
+        return itemCode.normalizeSearchKey().contains(normalizedQuery) ||
+            itemName.normalizeSearchKey().contains(normalizedQuery) ||
+            searchCode?.normalizeSearchKey()?.contains(normalizedQuery) == true ||
+            janCodes.any { it.normalizeSearchKey().contains(normalizedQuery) } ||
+            searchCodes.any { it.normalizeSearchKey().contains(normalizedQuery) } ||
+            itemQuantityCodes.any { quantityCode ->
+                listOfNotNull(
+                    quantityCode.productCode,
+                    quantityCode.ownCode,
+                    quantityCode.quantityCode
+                ).any { it.normalizeSearchKey().contains(normalizedQuery) }
+            }
     }
 
     private fun String.normalizeSearchKey(): String {
