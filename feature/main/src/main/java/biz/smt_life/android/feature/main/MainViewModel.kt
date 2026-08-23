@@ -87,16 +87,22 @@ class MainViewModel @Inject constructor(
                 showWarehouseDialog = false
             )
         }
-        refreshMasterData()
     }
 
     fun refreshMasterData() {
         viewModelScope.launch {
-            refreshMasterDataInternal()
+            refreshMasterDataInternal(showResult = true)
         }
     }
 
-    private fun loadData(autoRefreshIfStale: Boolean = true) {
+    fun clearMasterUpdateMessage() {
+        val current = _uiState.value
+        if (current is MainUiState.Ready) {
+            _uiState.value = current.copy(masterUpdateMessage = null)
+        }
+    }
+
+    private fun loadData() {
         viewModelScope.launch {
             try {
                 val pickerCode = tokenManager.getPickerCode()
@@ -124,7 +130,7 @@ class MainViewModel @Inject constructor(
                     inventory = 0
                 )
                 val currentDate = getCurrentDate()
-                val appVersion = "Ver.1.4.0"
+                val appVersion = "Ver.1.5.0"
 
                 _uiState.value = MainUiState.Ready(
                     pickerCode = pickerCode,
@@ -140,9 +146,6 @@ class MainViewModel @Inject constructor(
                     masterLastUpdatedAt = formatMasterLastUpdatedAt(masterLastUpdatedAtMillis)
                 )
 
-                if (autoRefreshIfStale && shouldRefreshMaster(masterLastUpdatedAtMillis)) {
-                    refreshMasterDataInternal()
-                }
             } catch (e: Exception) {
                 _uiState.value = MainUiState.Error(
                     message = e.message ?: "不明なエラーが発生しました"
@@ -151,14 +154,18 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private suspend fun refreshMasterDataInternal() {
+    private suspend fun refreshMasterDataInternal(showResult: Boolean) {
         val current = _uiState.value
         if (current is MainUiState.Ready && current.isMasterUpdating) {
             return
         }
 
         if (current is MainUiState.Ready) {
-            _uiState.value = current.copy(isMasterUpdating = true, showWarehouseDialog = false)
+            _uiState.value = current.copy(
+                isMasterUpdating = true,
+                showWarehouseDialog = false,
+                masterUpdateMessage = null
+            )
         }
 
         try {
@@ -195,17 +202,25 @@ class MainViewModel @Inject constructor(
                 ),
                 currentDate = getCurrentDate(),
                 hostUrl = hostUrl,
-                appVersion = "Ver.1.4.0",
+                appVersion = "Ver.1.5.0",
                 authKey = authToken,
                 warehouseId = warehouseId.toString(),
                 warehouses = warehouses,
                 isMasterUpdating = false,
-                masterLastUpdatedAt = formatMasterLastUpdatedAt(updatedAtMillis)
+                masterLastUpdatedAt = formatMasterLastUpdatedAt(updatedAtMillis),
+                masterUpdateMessage = if (showResult) "商品マスタを更新しました。" else null
             )
         } catch (e: Exception) {
             val latest = _uiState.value
             if (latest is MainUiState.Ready) {
-                _uiState.value = latest.copy(isMasterUpdating = false)
+                _uiState.value = latest.copy(
+                    isMasterUpdating = false,
+                    masterUpdateMessage = if (showResult) {
+                        "商品マスタの取得に失敗しました: ${formatMasterRefreshError(e)}"
+                    } else {
+                        null
+                    }
+                )
             } else {
                 _uiState.value = MainUiState.Error(
                     message = e.message ?: "マスタ更新に失敗しました"
@@ -214,11 +229,8 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private fun shouldRefreshMaster(lastUpdatedAtMillis: Long?): Boolean {
-        if (lastUpdatedAtMillis == null) {
-            return true
-        }
-        return System.currentTimeMillis() - lastUpdatedAtMillis >= MASTER_REFRESH_INTERVAL_MILLIS
+    private fun formatMasterRefreshError(error: Throwable): String {
+        return error.message?.takeIf { it.isNotBlank() } ?: "エラーが発生しました。"
     }
 
     private fun formatMasterLastUpdatedAt(updatedAtMillis: Long?): String? {
@@ -245,7 +257,4 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    companion object {
-        private const val MASTER_REFRESH_INTERVAL_MILLIS = 24L * 60L * 60L * 1000L
-    }
 }

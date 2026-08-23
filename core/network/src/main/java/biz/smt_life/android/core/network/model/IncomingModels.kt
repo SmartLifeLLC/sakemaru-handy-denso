@@ -86,6 +86,7 @@ data class IncomingScheduleResponse(
     @SerialName("quantity_type") val quantityType: String? = null, // "PIECE" or "CASE"
     @SerialName("expected_arrival_date") val expectedArrivalDate: String? = null,
     @SerialName("expiration_date") val expirationDate: String? = null,
+    @SerialName("default_expiration_date") val defaultExpirationDate: String? = null,
     val status: String? = null, // "PENDING", "PARTIAL", "CONFIRMED", "TRANSMITTED", "CANCELLED"
     val location: LocationResponse? = null
 )
@@ -137,6 +138,7 @@ data class IncomingSnapshotScheduleResponse(
     @SerialName("order_date") val orderDate: String? = null,
     @SerialName("expected_arrival_date") val expectedArrivalDate: String? = null,
     @SerialName("actual_arrival_date") val actualArrivalDate: String? = null,
+    @SerialName("expiration_date") val expirationDate: String? = null,
     val contractor: IncomingContractorResponse? = null,
     val item: IncomingSnapshotItemResponse? = null,
     val location: LocationResponse? = null,
@@ -168,6 +170,7 @@ data class IncomingSnapshotItemResponse(
     val packaging: String? = null,
     @SerialName("temperature_type") val temperatureType: String? = null,
     @SerialName("uses_expiration_date") val usesExpirationDate: Boolean = false,
+    @SerialName("default_expiration_date") val defaultExpirationDate: String? = null,
     @SerialName("supplier_id") val supplierId: Int? = null,
     @SerialName("search_codes") val searchCodes: List<ItemSearchCodeResponse> = emptyList(),
     @SerialName("item_quantity_codes") val itemQuantityCodes: List<ItemQuantityCodeResponse> = emptyList(),

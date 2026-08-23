@@ -1,5 +1,19 @@
 package biz.smt_life.android.feature.inbound.incoming
 
+import android.content.Context
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.KeyEvent as AndroidKeyEvent
+import android.view.MotionEvent
+import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,33 +23,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -52,29 +56,30 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import biz.smt_life.android.core.domain.model.Location
+import biz.smt_life.android.core.designsystem.util.SoundUtils
+import biz.smt_life.android.core.ui.HardwareKeyHandler
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -88,33 +93,95 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun IncomingInputScreen(
     onNavigateBack: () -> Unit,
-    onSubmitSuccess: () -> Unit,
+    onSubmitSuccess: (Boolean) -> Unit,
     viewModel: IncomingViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     val quantityFocusRequester = remember { FocusRequester() }
+    val pieceFocusRequester = remember { FocusRequester() }
     val expirationFocusRequester = remember { FocusRequester() }
-    val locationFocusRequester = remember { FocusRequester() }
 
-    // Track current focused field index (0: quantity, 1: expiration, 2: location)
+    // Track current focused field index (0: case, 1: piece, 2: expiration)
     var currentFieldIndex by remember { mutableIntStateOf(0) }
-    val focusRequesters = listOf(quantityFocusRequester, expirationFocusRequester, locationFocusRequester)
+    val focusRequesters = listOf(quantityFocusRequester, pieceFocusRequester, expirationFocusRequester)
+
+    fun moveInputFocus(delta: Int): Boolean {
+        val targetIndex = (currentFieldIndex + delta).coerceIn(0, focusRequesters.lastIndex)
+        if (targetIndex != currentFieldIndex) {
+            SoundUtils.playBeep()
+            currentFieldIndex = targetIndex
+            focusRequesters[targetIndex].requestFocus()
+            keyboardController?.hide()
+        }
+        return true
+    }
 
     // Request focus on quantity field when displayed
     LaunchedEffect(Unit) {
         quantityFocusRequester.requestFocus()
+        keyboardController?.hide()
     }
 
     // Date picker state
     var showDatePicker by remember { mutableStateOf(false) }
 
+    HardwareKeyHandler { keyCode, _ ->
+        when (keyCode) {
+            AndroidKeyEvent.KEYCODE_F1 -> {
+                SoundUtils.playBeep()
+                showDatePicker = true
+                true
+            }
+            AndroidKeyEvent.KEYCODE_F2 -> {
+                SoundUtils.playBeep()
+                onNavigateBack()
+                true
+            }
+            AndroidKeyEvent.KEYCODE_F3 -> {
+                SoundUtils.playBeep()
+                if (viewModel.canSubmit()) {
+                    viewModel.submitEntry(onSubmitSuccess)
+                }
+                true
+            }
+            AndroidKeyEvent.KEYCODE_ENTER,
+            AndroidKeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                false
+            }
+            AndroidKeyEvent.KEYCODE_DPAD_DOWN,
+            AndroidKeyEvent.KEYCODE_DPAD_RIGHT,
+            AndroidKeyEvent.KEYCODE_NAVIGATE_NEXT,
+            AndroidKeyEvent.KEYCODE_TAB -> {
+                moveInputFocus(1)
+            }
+            AndroidKeyEvent.KEYCODE_DPAD_UP,
+            AndroidKeyEvent.KEYCODE_DPAD_LEFT,
+            AndroidKeyEvent.KEYCODE_NAVIGATE_PREVIOUS -> {
+                moveInputFocus(-1)
+            }
+            else -> false
+        }
+    }
 
     val schedule = state.selectedSchedule
     val product = state.selectedProduct
     val quantityWarning = viewModel.quantityWarningMessage()
+    val pendingTotalPieceQuantity = if (schedule != null && product != null) {
+        state.pendingInspectionDetails
+            .filter { detail ->
+                if (schedule.isUnplanned) {
+                    detail.incomingScheduleId == null && detail.itemId == product.itemId
+                } else {
+                    detail.incomingScheduleId == schedule.id
+                }
+            }
+            .sumOf { detail -> detail.totalPieceQuantity }
+    } else {
+        0
+    }
 
     // Show error message
     LaunchedEffect(state.errorMessage) {
@@ -210,12 +277,16 @@ fun IncomingInputScreen(
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
                 .onKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+
                     when (event.key) {
                         Key.F2 -> {
+                            SoundUtils.playBeep()
                             onNavigateBack()
                             true
                         }
                         Key.F3 -> {
+                            SoundUtils.playBeep()
                             // F3 = 登録
                             if (viewModel.canSubmit()) {
                                 viewModel.submitEntry(onSubmitSuccess)
@@ -223,25 +294,16 @@ fun IncomingInputScreen(
                             true
                         }
                         Key.F1 -> {
+                            SoundUtils.playBeep()
                             // F1 = 賞味期限カレンダー表示
                             showDatePicker = true
                             true
                         }
-                        Key.DirectionDown, Key.Tab -> {
-                            // Move focus to next field
-                            if (currentFieldIndex < focusRequesters.size - 1) {
-                                currentFieldIndex++
-                                focusRequesters[currentFieldIndex].requestFocus()
-                            }
-                            true
+                        Key.DirectionDown, Key.DirectionRight, Key.Tab -> {
+                            moveInputFocus(1)
                         }
-                        Key.DirectionUp -> {
-                            // Move focus to previous field
-                            if (currentFieldIndex > 0) {
-                                currentFieldIndex--
-                                focusRequesters[currentFieldIndex].requestFocus()
-                            }
-                            true
+                        Key.DirectionUp, Key.DirectionLeft -> {
+                            moveInputFocus(-1)
                         }
                         else -> false
                     }
@@ -260,7 +322,8 @@ fun IncomingInputScreen(
             ArrivalDateBar(
                 orderDate = schedule.orderDate,
                 expectedDate = schedule.expectedArrivalDate
-                    ?: LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+                    ?: LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE),
+                pendingTotalPieceQuantity = pendingTotalPieceQuantity
             )
 
             HorizontalDivider()
@@ -315,7 +378,13 @@ fun IncomingInputScreen(
                     isUnplanned = schedule.isUnplanned,
                     warningMessage = quantityWarning,
                     focusRequester = quantityFocusRequester,
-                    onFocusChanged = { if (it) currentFieldIndex = 0 }
+                    pieceFocusRequester = pieceFocusRequester,
+                    isCaseFocusTarget = currentFieldIndex == 0,
+                    isPieceFocusTarget = currentFieldIndex == 1,
+                    onCaseFocusChanged = { if (it) currentFieldIndex = 0 },
+                    onPieceFocusChanged = { if (it) currentFieldIndex = 1 },
+                    onMovePrevious = { moveInputFocus(-1) },
+                    onMoveNext = { moveInputFocus(1) }
                 )
 
                 // Expiration date input with calendar
@@ -324,18 +393,16 @@ fun IncomingInputScreen(
                     onValueChange = viewModel::onExpirationDateChange,
                     onCalendarClick = { showDatePicker = true },
                     focusRequester = expirationFocusRequester,
-                    onFocusChanged = { if (it) currentFieldIndex = 1 }
+                    isFocusTarget = currentFieldIndex == 2,
+                    onFocusChanged = { if (it) currentFieldIndex = 2 },
+                    onMovePrevious = { moveInputFocus(-1) },
+                    onMoveNext = { moveInputFocus(1) }
                 )
 
-                // Location input with autocomplete
-                LocationInputField(
+                // Location is fixed to the incoming default location.
+                LocationDisplayField(
                     value = state.inputLocationSearch,
-                    onValueChange = viewModel::onLocationSearchChange,
-                    suggestions = state.locationSuggestions,
-                    isLoading = state.isLoadingLocations,
-                    onLocationSelected = viewModel::selectLocation,
-                    focusRequester = locationFocusRequester,
-                    onFocusChanged = { if (it) currentFieldIndex = 2 }
+                    locationId = state.inputLocationId
                 )
             }
         }
@@ -392,17 +459,17 @@ private fun ProductInfoHeader(
 @Composable
 private fun ArrivalDateBar(
     orderDate: String?,
-    expectedDate: String
+    expectedDate: String,
+    pendingTotalPieceQuantity: Int
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.tertiaryContainer
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
             Text(
                 text = listOfNotNull(
@@ -412,6 +479,13 @@ private fun ArrivalDateBar(
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Bold
                 )
+            )
+            Text(
+                text = "送信前 入荷総バラ数: $pendingTotalPieceQuantity",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.ExtraBold
+                ),
+                color = MaterialTheme.colorScheme.tertiary
             )
         }
     }
@@ -424,7 +498,10 @@ private fun ExpirationDateField(
     onValueChange: (String) -> Unit,
     onCalendarClick: () -> Unit,
     focusRequester: FocusRequester,
-    onFocusChanged: (Boolean) -> Unit
+    isFocusTarget: Boolean,
+    onFocusChanged: (Boolean) -> Unit,
+    onMovePrevious: () -> Boolean,
+    onMoveNext: () -> Boolean
 ) {
     Column {
         Row(
@@ -446,43 +523,37 @@ private fun ExpirationDateField(
             )
         }
 
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .onFocusChanged { onFocusChanged(it.isFocused) },
-            placeholder = { Text("YYYY-MM-DD") },
-            singleLine = true,
-            trailingIcon = {
-                IconButton(onClick = onCalendarClick) {
-                    Icon(
-                        imageVector = Icons.Default.DateRange,
-                        contentDescription = "カレンダーを開く"
-                    )
-                }
-            },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Number,
-                imeAction = ImeAction.Next
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HandyNumericEditText(
+                value = value,
+                onValueChange = onValueChange,
+                placeholder = "YYYYMMDD",
+                maxLength = 8,
+                focusRequester = focusRequester,
+                isFocusTarget = isFocusTarget,
+                onFocusChanged = onFocusChanged,
+                onMovePrevious = onMovePrevious,
+                onMoveNext = onMoveNext,
+                modifier = Modifier.weight(1f)
             )
-        )
+            IconButton(onClick = onCalendarClick) {
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = "カレンダーを開く"
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun LocationInputField(
+private fun LocationDisplayField(
     value: String,
-    onValueChange: (String) -> Unit,
-    suggestions: List<Location>,
-    isLoading: Boolean,
-    onLocationSelected: (Location) -> Unit,
-    focusRequester: FocusRequester,
-    onFocusChanged: (Boolean) -> Unit
+    locationId: Int?
 ) {
-    var showSuggestions by remember { mutableStateOf(false) }
-
     Column {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -503,57 +574,25 @@ private fun LocationInputField(
             )
         }
 
-        Box {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { newValue ->
-                    onValueChange(newValue)
-                    showSuggestions = true
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester)
-                    .onFocusChanged { focusState ->
-                        onFocusChanged(focusState.isFocused)
-                        if (!focusState.isFocused) {
-                            showSuggestions = false
-                        }
-                    },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null)
-                },
-                trailingIcon = {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .width(24.dp)
-                                .height(24.dp),
-                            strokeWidth = 2.dp
-                        )
-                    }
-                },
-                placeholder = { Text("ロケーション検索") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-            )
-
-            // Suggestions dropdown
-            DropdownMenu(
-                expanded = showSuggestions && suggestions.isNotEmpty(),
-                onDismissRequest = { showSuggestions = false },
-                modifier = Modifier.fillMaxWidth(0.9f)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.small
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
-                suggestions.forEach { location ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(location.displayName ?: location.fullDisplayName)
-                        },
-                        onClick = {
-                            onLocationSelected(location)
-                            showSuggestions = false
-                        }
-                    )
-                }
+                Text(
+                    text = value.ifBlank { "デフォルトロケ未設定" },
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = locationId?.let { "ロケID: $it / 変更不可" } ?: "変更不可",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -570,7 +609,13 @@ private fun CasePieceQuantityInputFields(
     isUnplanned: Boolean,
     warningMessage: String?,
     focusRequester: FocusRequester,
-    onFocusChanged: (Boolean) -> Unit
+    pieceFocusRequester: FocusRequester,
+    isCaseFocusTarget: Boolean,
+    isPieceFocusTarget: Boolean,
+    onCaseFocusChanged: (Boolean) -> Unit,
+    onPieceFocusChanged: (Boolean) -> Unit,
+    onMovePrevious: () -> Boolean,
+    onMoveNext: () -> Boolean
 ) {
     val capacity = capacityCase?.takeIf { it > 1 } ?: 1
     val caseQty = caseValue.toIntOrNull() ?: 0
@@ -603,32 +648,29 @@ private fun CasePieceQuantityInputFields(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
+            HandyNumericEditText(
                 value = caseValue,
                 onValueChange = onCaseValueChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequester)
-                    .onFocusChanged { focusState -> onFocusChanged(focusState.isFocused) },
-                label = { Text("ケース") },
-                singleLine = true,
+                label = "ケース",
                 isError = (caseValue.isNotEmpty() || pieceValue.isNotEmpty()) && !isValid,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Next
-                )
+                focusRequester = focusRequester,
+                isFocusTarget = isCaseFocusTarget,
+                onFocusChanged = onCaseFocusChanged,
+                onMovePrevious = onMovePrevious,
+                onMoveNext = onMoveNext,
+                modifier = Modifier.weight(1f)
             )
-            OutlinedTextField(
+            HandyNumericEditText(
                 value = pieceValue,
                 onValueChange = onPieceValueChange,
-                modifier = Modifier.weight(1f),
-                label = { Text("バラ") },
-                singleLine = true,
+                label = "バラ",
                 isError = (caseValue.isNotEmpty() || pieceValue.isNotEmpty()) && !isValid,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Next
-                )
+                focusRequester = pieceFocusRequester,
+                isFocusTarget = isPieceFocusTarget,
+                onFocusChanged = onPieceFocusChanged,
+                onMovePrevious = onMovePrevious,
+                onMoveNext = onMoveNext,
+                modifier = Modifier.weight(1f)
             )
         }
 
@@ -655,6 +697,188 @@ private fun CasePieceQuantityInputFields(
             )
         }
     }
+}
+
+@Composable
+private fun HandyNumericEditText(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: String? = null,
+    maxLength: Int? = null,
+    isError: Boolean = false,
+    focusRequester: FocusRequester,
+    isFocusTarget: Boolean,
+    onFocusChanged: (Boolean) -> Unit,
+    onMovePrevious: () -> Boolean,
+    onMoveNext: () -> Boolean
+) {
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+    val currentOnFocusChanged by rememberUpdatedState(onFocusChanged)
+    val currentOnMovePrevious by rememberUpdatedState(onMovePrevious)
+    val currentOnMoveNext by rememberUpdatedState(onMoveNext)
+    val currentValue by rememberUpdatedState(value)
+    val currentMaxLength by rememberUpdatedState(maxLength)
+    val density = LocalDensity.current
+    val borderColor = if (isError) {
+        MaterialTheme.colorScheme.error.toArgb()
+    } else {
+        MaterialTheme.colorScheme.outline.toArgb()
+    }
+    val backgroundColor = MaterialTheme.colorScheme.surface.toArgb()
+    val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val hintColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val strokeWidth = (density.density * 1.5f).toInt().coerceAtLeast(1)
+
+    Column(modifier = modifier) {
+        label?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
+        }
+
+        AndroidView(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .focusRequester(focusRequester),
+            factory = { context ->
+                EditText(context).apply {
+                    applyHandyNumericInputSettings()
+                    hint = placeholder.orEmpty()
+                    setText(normalizeNumericInput(value, maxLength))
+                    setSelection(text.length)
+                    addTextChangedListener(object : TextWatcher {
+                        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+                        override fun afterTextChanged(s: Editable?) {
+                            val raw = s?.toString().orEmpty()
+                            val normalized = normalizeNumericInput(raw, currentMaxLength)
+                            if (raw != normalized) {
+                                setText(normalized)
+                                setSelection(normalized.length)
+                                return
+                            }
+                            if (normalized != currentValue) {
+                                currentOnValueChange(normalized)
+                            }
+                        }
+                    })
+                    setOnFocusChangeListener { _, hasFocus ->
+                        setShowSoftInputOnFocus(false)
+                        if (hasFocus) {
+                            post {
+                                selectAll()
+                                hideSoftwareKeyboard(this)
+                            }
+                        }
+                        currentOnFocusChanged(hasFocus)
+                    }
+                    setOnTouchListener { _, event ->
+                        if (event.action == MotionEvent.ACTION_UP) {
+                            performClick()
+                            setShowSoftInputOnFocus(false)
+                            requestFocus()
+                            post {
+                                selectAll()
+                                hideSoftwareKeyboard(this)
+                            }
+                        }
+                        true
+                    }
+                    setOnKeyListener { _, keyCode, event ->
+                        if (event.action != AndroidKeyEvent.ACTION_DOWN) {
+                            return@setOnKeyListener false
+                        }
+                        when (keyCode) {
+                            AndroidKeyEvent.KEYCODE_DPAD_DOWN,
+                            AndroidKeyEvent.KEYCODE_DPAD_RIGHT,
+                            AndroidKeyEvent.KEYCODE_NAVIGATE_NEXT,
+                            AndroidKeyEvent.KEYCODE_TAB -> currentOnMoveNext()
+                            AndroidKeyEvent.KEYCODE_DPAD_UP,
+                            AndroidKeyEvent.KEYCODE_DPAD_LEFT,
+                            AndroidKeyEvent.KEYCODE_NAVIGATE_PREVIOUS -> currentOnMovePrevious()
+                            else -> false
+                        }
+                    }
+                }
+            },
+            update = { editText ->
+                val normalizedValue = normalizeNumericInput(value, maxLength)
+                editText.setShowSoftInputOnFocus(false)
+                editText.hint = placeholder.orEmpty()
+                editText.setTextColor(textColor)
+                editText.setHintTextColor(hintColor)
+                editText.background = createHandyEditTextBackground(
+                    backgroundColor = backgroundColor,
+                    borderColor = borderColor,
+                    strokeWidth = strokeWidth
+                )
+                if (editText.text.toString() != normalizedValue) {
+                    editText.setText(normalizedValue)
+                    if (editText.hasFocus()) {
+                        editText.selectAll()
+                    } else {
+                        editText.setSelection(normalizedValue.length)
+                    }
+                }
+                if (isFocusTarget && !editText.hasFocus()) {
+                    editText.requestFocus()
+                    editText.post {
+                        editText.setShowSoftInputOnFocus(false)
+                        editText.selectAll()
+                        hideSoftwareKeyboard(editText)
+                    }
+                } else if (editText.hasFocus()) {
+                    editText.post { hideSoftwareKeyboard(editText) }
+                }
+            }
+        )
+    }
+}
+
+private fun EditText.applyHandyNumericInputSettings() {
+    inputType = InputType.TYPE_CLASS_NUMBER
+    imeOptions = EditorInfo.IME_ACTION_NONE
+    gravity = Gravity.CENTER_VERTICAL
+    isSingleLine = true
+    setSelectAllOnFocus(true)
+    setShowSoftInputOnFocus(false)
+    isFocusable = true
+    isFocusableInTouchMode = true
+    isCursorVisible = true
+    setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+    setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+    setPadding(12, 0, 12, 0)
+}
+
+private fun normalizeNumericInput(value: String, maxLength: Int?): String {
+    val digits = value.filter { it.isDigit() }
+    return maxLength?.let { digits.take(it) } ?: digits
+}
+
+private fun createHandyEditTextBackground(
+    backgroundColor: Int,
+    borderColor: Int,
+    strokeWidth: Int
+): GradientDrawable {
+    return GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        setColor(backgroundColor)
+        setStroke(strokeWidth, borderColor)
+        cornerRadius = 0f
+    }
+}
+
+private fun hideSoftwareKeyboard(view: View) {
+    val inputMethodManager = view.context
+        .getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+    inputMethodManager?.hideSoftInputFromWindow(view.windowToken, 0)
 }
 
 private fun formatCasePiece(quantity: Int, capacityCase: Int?): String {

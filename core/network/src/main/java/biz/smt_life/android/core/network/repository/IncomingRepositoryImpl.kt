@@ -372,16 +372,10 @@ class IncomingRepositoryImpl @Inject constructor(
 
     override suspend fun ensureIncomingItemMaster(warehouseId: Int): Result<IncomingItemMaster> {
         val cached = loadCachedIncomingItemMasterCache(warehouseId)
-        if (cached != null && cached.cachedDate == LocalDate.now().toString()) {
-            return Result.success(cached.response.toDomainModel(warehouseId))
-        }
-
-        val refreshed = refreshIncomingItemMaster(warehouseId)
-        return if (refreshed.isFailure && cached != null) {
-            Result.success(cached.response.toDomainModel(warehouseId))
-        } else {
-            refreshed
-        }
+        return Result.success(
+            cached?.response?.toDomainModel(warehouseId)
+                ?: IncomingItemMaster(warehouseId = warehouseId, masterDate = "")
+        )
     }
 
     override suspend fun refreshIncomingItemMaster(warehouseId: Int): Result<IncomingItemMaster> {
@@ -611,6 +605,7 @@ class IncomingRepositoryImpl @Inject constructor(
             capacityCase = capacityCase,
             packaging = packaging,
             temperatureType = temperatureType,
+            defaultExpirationDate = defaultExpirationDate,
             defaultLocation = defaultLocation?.toDomainModel(),
             totalExpectedQuantity = expectedTotal,
             totalReceivedQuantity = receivedTotal,
@@ -642,6 +637,8 @@ class IncomingRepositoryImpl @Inject constructor(
             inspectionPolicy = "APP_CONFIRM_ALLOWED",
             status = IncomingScheduleStatus.PENDING,
             location = defaultLocation?.toDomainModel(),
+            expirationDate = defaultExpirationDate,
+            defaultExpirationDate = defaultExpirationDate,
             capacityCase = capacityCase
         )
     }
@@ -669,8 +666,10 @@ class IncomingRepositoryImpl @Inject constructor(
             capacityCase = quantity?.capacityCase ?: item?.capacityCase,
             quantityType = IncomingQuantityType.fromString(quantity?.quantityType),
             expectedArrivalDate = expectedArrivalDate,
+            expirationDate = expirationDate,
+            defaultExpirationDate = item?.defaultExpirationDate,
             status = IncomingScheduleStatus.fromString(status),
-            location = location?.toDomainModel()
+            location = (location ?: item?.defaultLocation)?.toDomainModel()
         )
     }
 
@@ -695,6 +694,7 @@ class IncomingRepositoryImpl @Inject constructor(
             capacityCase = capacityCase,
             packaging = packaging,
             temperatureType = temperatureType,
+            defaultExpirationDate = null,
             images = images,
             defaultLocation = defaultLocation?.toDomainModel(),
             totalExpectedQuantity = totalExpectedQuantity,
@@ -732,6 +732,7 @@ class IncomingRepositoryImpl @Inject constructor(
             quantityType = IncomingQuantityType.fromString(quantityType),
             expectedArrivalDate = expectedArrivalDate,
             expirationDate = expirationDate,
+            defaultExpirationDate = defaultExpirationDate,
             status = IncomingScheduleStatus.fromString(status),
             location = location?.toDomainModel()
         )

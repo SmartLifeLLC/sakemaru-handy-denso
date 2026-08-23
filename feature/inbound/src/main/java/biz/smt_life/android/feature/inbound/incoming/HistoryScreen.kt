@@ -1,6 +1,8 @@
 package biz.smt_life.android.feature.inbound.incoming
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,26 +37,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import biz.smt_life.android.core.designsystem.util.SoundUtils
-import biz.smt_life.android.core.domain.model.IncomingWorkItem
-import biz.smt_life.android.core.domain.model.IncomingWorkStatus
+import biz.smt_life.android.core.domain.model.IncomingInspectionDetailData
+import biz.smt_life.android.core.domain.model.Location
+import biz.smt_life.android.core.ui.HardwareKeyHandler
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 /**
- * History Screen for Incoming feature.
- * Displays today's incoming work history.
+ * History screen for incoming inspection.
+ * Displays local pending inspection details before they are sent to the server.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,13 +72,55 @@ fun HistoryScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
-
-    // Load history on first composition
-    LaunchedEffect(Unit) {
-        viewModel.loadHistory()
+    val pendingDetails = state.pendingInspectionDetails
+    fun removeSelectedAndReturnToList() {
+        if (state.isSyncingInspectionBatch) return
+        if (viewModel.removeSelectedPendingInspectionDetail()) {
+            onNavigateToProductList()
+        }
+    }
+    fun submitPendingData() {
+        if (!state.isSyncingInspectionBatch) {
+            viewModel.syncInspectionBatch()
+        }
     }
 
-    // Show error message
+    HardwareKeyHandler { keyCode, _ ->
+        when (keyCode) {
+            AndroidKeyEvent.KEYCODE_F1 -> {
+                SoundUtils.playBeep()
+                removeSelectedAndReturnToList()
+                true
+            }
+            AndroidKeyEvent.KEYCODE_F2 -> {
+                SoundUtils.playBeep()
+                onNavigateBack()
+                true
+            }
+            AndroidKeyEvent.KEYCODE_F3 -> {
+                SoundUtils.playBeep()
+                onNavigateToProductList()
+                true
+            }
+            AndroidKeyEvent.KEYCODE_F4 -> {
+                SoundUtils.playBeep()
+                submitPendingData()
+                true
+            }
+            AndroidKeyEvent.KEYCODE_DPAD_UP -> {
+                SoundUtils.playBeep()
+                viewModel.moveHistorySelectionUp()
+                true
+            }
+            AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
+                SoundUtils.playBeep()
+                viewModel.moveHistorySelectionDown()
+                true
+            }
+            else -> false
+        }
+    }
+
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
@@ -81,10 +128,16 @@ fun HistoryScreen(
         }
     }
 
-    // Scroll to selected item
-    LaunchedEffect(state.selectedHistoryIndex) {
-        if (state.historyItems.isNotEmpty()) {
-            listState.animateScrollToItem(state.selectedHistoryIndex)
+    LaunchedEffect(state.successMessage) {
+        state.successMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearSuccess()
+        }
+    }
+
+    LaunchedEffect(state.selectedHistoryIndex, pendingDetails.size) {
+        if (pendingDetails.isNotEmpty()) {
+            listState.animateScrollToItem(state.selectedHistoryIndex.coerceIn(0, pendingDetails.lastIndex))
         }
     }
 
@@ -111,242 +164,239 @@ fun HistoryScreen(
         },
         bottomBar = {
             FunctionKeyBar(
-                f1 = null,
+                f1 = if (state.isSyncingInspectionBatch) null else FunctionKey("削除", ::removeSelectedAndReturnToList),
                 f2 = FunctionKey("戻る", onNavigateBack),
                 f3 = FunctionKey("リスト", onNavigateToProductList),
-                f4 = null
+                f4 = FunctionKey("送信", ::submitPendingData)
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .onKeyEvent { event ->
-                    when (event.key) {
-                        Key.F2 -> {
-                            onNavigateBack()
-                            true
-                        }
-                        Key.DirectionUp -> {
-                            viewModel.moveHistorySelectionUp()
-                            true
-                        }
-                        Key.DirectionDown -> {
-                            viewModel.moveHistorySelectionDown()
-                            true
-                        }
-                        Key.Enter -> {
-                            val items = state.historyItems
-                            val index = state.selectedHistoryIndex
-                            if (index >= 0 && index < items.size) {
-                                if (viewModel.selectHistoryItem(items[index])) {
-                                    onEditWorkItem()
-                                }
-                            }
-                            true
-                        }
-                        else -> false
-                    }
-                }
         ) {
-            // Header
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surfaceVariant
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+
+                        when (event.key) {
+                            Key.F1 -> {
+                                SoundUtils.playBeep()
+                                removeSelectedAndReturnToList()
+                                true
+                            }
+                            Key.F2 -> {
+                                SoundUtils.playBeep()
+                                onNavigateBack()
+                                true
+                            }
+                            Key.F3 -> {
+                                SoundUtils.playBeep()
+                                onNavigateToProductList()
+                                true
+                            }
+                            Key.F4 -> {
+                                SoundUtils.playBeep()
+                                submitPendingData()
+                                true
+                            }
+                            Key.DirectionUp -> {
+                                SoundUtils.playBeep()
+                                viewModel.moveHistorySelectionUp()
+                                true
+                            }
+                            Key.DirectionDown -> {
+                                SoundUtils.playBeep()
+                                viewModel.moveHistorySelectionDown()
+                                true
+                            }
+                            else -> false
+                        }
+                    }
             ) {
-                Text(
-                    text = "本日の入庫履歴",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold
-                    ),
-                    modifier = Modifier.padding(8.dp)
-                )
-            }
-
-            HorizontalDivider()
-
-            // Content
-            when {
-                state.isLoadingHistory -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator()
+                        Text(
+                            text = "送信前データ",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Text(
+                            text = "${pendingDetails.size}件",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
-                state.historyItems.isEmpty() -> {
+
+                HorizontalDivider()
+
+                if (pendingDetails.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "本日の入庫履歴がありません",
+                            text = "送信前の検品データがありません",
                             style = MaterialTheme.typography.bodyLarge
                         )
                     }
-                }
-                else -> {
+                } else {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 2.dp)
                     ) {
                         itemsIndexed(
-                            items = state.historyItems,
-                            key = { _, item -> item.id }
-                        ) { index, workItem ->
-                            HistoryListItem(
-                                workItem = workItem,
+                            items = pendingDetails,
+                            key = { _, detail -> detail.clientLineUuid }
+                        ) { index, detail ->
+                            PendingInspectionDetailListItem(
+                                detail = detail,
+                                location = state.syncedLocations.firstOrNull { it.id == detail.locationId },
                                 isSelected = index == state.selectedHistoryIndex,
                                 onClick = {
                                     SoundUtils.playBeep()
-                                    if (viewModel.selectHistoryItem(workItem)) {
-                                        onEditWorkItem()
-                                    }
+                                    viewModel.selectPendingInspectionDetail(index)
                                 }
                             )
-                            if (index < state.historyItems.lastIndex) {
+                            if (index < pendingDetails.lastIndex) {
                                 HorizontalDivider()
                             }
                         }
                     }
                 }
             }
+
+            if (state.isSyncingInspectionBatch) {
+                SendingOverlay()
+            }
         }
     }
 }
 
 @Composable
-private fun HistoryListItem(
-    workItem: IncomingWorkItem,
+private fun SendingOverlay() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.35f))
+            .clickable(enabled = true, onClick = {}),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CircularProgressIndicator()
+                Text(
+                    text = "送信中...",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = "しばらくお待ちください",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingInspectionDetailListItem(
+    detail: IncomingInspectionDetailData,
+    location: Location?,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val schedule = workItem.schedule
-    val canEdit = workItem.status.canEdit
+    val locationText = location?.displayName ?: location?.fullDisplayName ?: detail.locationId?.toString() ?: "-"
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = canEdit, onClick = onClick),
-        color = when {
-            isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-            !canEdit -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            else -> MaterialTheme.colorScheme.surface
+            .clickable(onClick = onClick),
+        color = if (isSelected) {
+            Color(0xFF0D47A1)
+        } else {
+            MaterialTheme.colorScheme.surface
         }
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)
         ) {
-            // First row: JAN code and item code
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = schedule?.primaryJanCode ?: "",
+                    text = detail.scannedCode ?: detail.itemCode ?: "",
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold
-                    )
+                    ),
+                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = schedule?.itemCode ?: "",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = detail.slipNumber ?: "",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Second row: Item name
             Text(
-                text = schedule?.itemName ?: "",
-                style = MaterialTheme.typography.bodyLarge.copy(
+                text = detail.itemName ?: "商品名なし",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 20.sp,
+                    lineHeight = 23.sp,
                     fontWeight = FontWeight.Bold
                 ),
-                color = MaterialTheme.colorScheme.primary,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.primary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Third row: Warehouse name
             Text(
-                text = schedule?.warehouseName ?: "",
+                text = "ロケ:$locationText  期限:${detail.expirationDate?.let { formatDateShort(it) } ?: "-"}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // Fourth row: Dates
-            Row(
+            Spacer(modifier = Modifier.height(3.dp))
+
+            Text(
+                text = "ケース ${detail.caseQuantity} | バラ ${detail.pieceQuantity} | 総バラ ${detail.totalPieceQuantity}",
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                val expectedDate = schedule?.expectedArrivalDate?.let { formatDateShort(it) } ?: ""
-                val arrivalDate = workItem.workArrivalDate?.let { formatDateShort(it) } ?: ""
-
-                Text(
-                    text = "予定:$expectedDate  入庫:$arrivalDate",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            // Fifth row: Quantity and status
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Status badge
-                StatusBadge(status = workItem.status)
-
-                // Quantity
-                Text(
-                    text = workItem.workQuantity.toString(),
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
 
-@Composable
-private fun StatusBadge(status: IncomingWorkStatus) {
-    val (text, color) = when (status) {
-        IncomingWorkStatus.WORKING -> "作業中" to MaterialTheme.colorScheme.tertiary
-        IncomingWorkStatus.COMPLETED -> "完了" to MaterialTheme.colorScheme.primary
-        IncomingWorkStatus.CANCELLED -> "キャンセル" to MaterialTheme.colorScheme.error
-    }
-
-    Surface(
-        color = color.copy(alpha = 0.1f),
-        shape = MaterialTheme.shapes.small
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall,
-            color = color,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-    }
-}
-
-/**
- * Format date string for short display (MM/DD).
- */
 private fun formatDateShort(dateStr: String): String {
     return try {
         val date = LocalDate.parse(dateStr)

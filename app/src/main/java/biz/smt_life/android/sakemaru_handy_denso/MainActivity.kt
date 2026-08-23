@@ -3,6 +3,7 @@ package biz.smt_life.android.sakemaru_handy_denso
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -22,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import biz.smt_life.android.core.designsystem.theme.HandyTheme
 import biz.smt_life.android.core.domain.repository.AuthRepository
+import biz.smt_life.android.core.ui.HardwareKeyDispatcher
 import biz.smt_life.android.core.ui.TokenManager
 import biz.smt_life.android.sakemaru_handy_denso.navigation.HandyNavHost
 import biz.smt_life.android.sakemaru_handy_denso.navigation.Routes
@@ -43,6 +45,14 @@ class MainActivity : ComponentActivity() {
     lateinit var authRepository: AuthRepository
 
     private var isSessionValidated = false
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (HardwareKeyDispatcher.dispatch(event)) {
+            return true
+        }
+
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

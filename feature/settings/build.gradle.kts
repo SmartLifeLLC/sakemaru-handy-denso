@@ -26,7 +26,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         val presetUrls = deployConfig.getProperty("preset.urls")
-            ?: "https://wms.lw-hana.net,https://wms.sakemaru.click,http://10.0.2.2:8002,http://10.0.2.2:8000"
+            ?: "https://wms.lw-hana.click,https://wms.lw-hana.net,https://wms.sakemaru.click,http://10.0.2.2:8002,http://10.0.2.2:8000"
         val customerName = deployConfig.getProperty("customer.name") ?: ""
         buildConfigField("String", "PRESET_URLS", "\"$presetUrls\"")
         buildConfigField("String", "CUSTOMER_NAME", "\"$customerName\"")

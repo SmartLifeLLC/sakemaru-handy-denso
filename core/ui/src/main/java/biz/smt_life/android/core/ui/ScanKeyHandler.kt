@@ -13,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.platform.LocalView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,38 +21,74 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "ScanKeyHandler"
 
+object HardwareKeyDispatcher {
+    private data class Entry(
+        val id: Long,
+        val onKeyEvent: (KeyEvent) -> Boolean
+    )
+
+    private val handlers = mutableListOf<Entry>()
+    private var nextId = 0L
+
+    fun register(onKeyEvent: (KeyEvent) -> Boolean): () -> Unit {
+        val entry = Entry(++nextId, onKeyEvent)
+        handlers += entry
+
+        return {
+            handlers.remove(entry)
+        }
+    }
+
+    fun dispatch(event: KeyEvent): Boolean {
+        for (entry in handlers.asReversed()) {
+            if (entry.onKeyEvent(event)) {
+                return true
+            }
+        }
+
+        return false
+    }
+}
+
 @Composable
 fun ScanKeyHandler(
     onScan: (String) -> Unit,
     onScanStart: () -> Unit = {},
-    minScanLength: Int = 1
+    minScanLength: Int = 1,
+    onKeyDown: (keyCode: Int, event: KeyEvent) -> Boolean = { _, _ -> false }
 ) {
-    val view = LocalView.current
     val currentOnScan by rememberUpdatedState(onScan)
     val currentOnScanStart by rememberUpdatedState(onScanStart)
     val currentMinScanLength by rememberUpdatedState(minScanLength)
+    val currentOnKeyDown by rememberUpdatedState(onKeyDown)
     var scanBuffer by remember { mutableStateOf("") }
     var resetJob by remember { mutableStateOf<Job?>(null) }
 
-    Log.d(TAG, "ScanKeyHandler composed (view=${view.javaClass.simpleName}, minLen=$minScanLength)")
+    Log.d(TAG, "ScanKeyHandler composed (minLen=$minScanLength)")
 
-    DisposableEffect(view) {
-        val listener = android.view.View.OnKeyListener { _, keyCode, event ->
+    DisposableEffect(Unit) {
+        val unregister = HardwareKeyDispatcher.register { event ->
+            val keyCode = event.keyCode
             if (event.action == KeyEvent.ACTION_DOWN) {
-                when (keyCode) {
-                    KeyEvent.KEYCODE_ENTER -> {
-                        Log.d(TAG, "ENTER pressed, buffer='$scanBuffer' (len=${scanBuffer.length}, minLen=$currentMinScanLength)")
-                        if (scanBuffer.length >= currentMinScanLength) {
-                            currentOnScan(scanBuffer)
-                            scanBuffer = ""
-                            resetJob?.cancel()
-                            true
-                        } else {
-                            scanBuffer = ""
-                            resetJob?.cancel()
-                            false
-                        }
+                if (keyCode in setOf(KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                    Log.d(TAG, "ENTER pressed, buffer='$scanBuffer' (len=${scanBuffer.length}, minLen=$currentMinScanLength)")
+                    if (scanBuffer.length >= currentMinScanLength) {
+                        currentOnScan(scanBuffer)
+                        scanBuffer = ""
+                        resetJob?.cancel()
+                        return@register true
                     }
+
+                    scanBuffer = ""
+                    resetJob?.cancel()
+                    return@register currentOnKeyDown(keyCode, event)
+                }
+
+                if (currentOnKeyDown(keyCode, event)) {
+                    return@register true
+                }
+
+                when (keyCode) {
                     else -> {
                         val char = event.unicodeChar.toChar()
                         if (char.isLetterOrDigit() || char in setOf('-', '_', ' ')) {
@@ -81,13 +116,32 @@ fun ScanKeyHandler(
             }
         }
 
-        view.setOnKeyListener(listener)
-        Log.d(TAG, "OnKeyListener SET on ${view.javaClass.simpleName}")
+        Log.d(TAG, "ScanKeyHandler registered")
 
         onDispose {
-            view.setOnKeyListener(null)
-            Log.d(TAG, "OnKeyListener CLEARED")
+            unregister()
+            Log.d(TAG, "ScanKeyHandler unregistered")
             resetJob?.cancel()
+        }
+    }
+}
+
+@Composable
+fun HardwareKeyHandler(
+    onKeyDown: (keyCode: Int, event: KeyEvent) -> Boolean
+) {
+    val currentOnKeyDown by rememberUpdatedState(onKeyDown)
+
+    DisposableEffect(Unit) {
+        val unregister = HardwareKeyDispatcher.register { event ->
+            event.action == KeyEvent.ACTION_DOWN && currentOnKeyDown(event.keyCode, event)
+        }
+
+        Log.d(TAG, "HardwareKeyHandler registered")
+
+        onDispose {
+            unregister()
+            Log.d(TAG, "HardwareKeyHandler unregistered")
         }
     }
 }

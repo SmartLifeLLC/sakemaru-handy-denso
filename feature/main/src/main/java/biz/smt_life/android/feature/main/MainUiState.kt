@@ -20,7 +20,8 @@ sealed interface MainUiState {
         val warehouses: List<IncomingWarehouse> = emptyList(),
         val showWarehouseDialog: Boolean = false,
         val isMasterUpdating: Boolean = false,
-        val masterLastUpdatedAt: String? = null
+        val masterLastUpdatedAt: String? = null,
+        val masterUpdateMessage: String? = null
     ) : MainUiState
 
     data class Error(
