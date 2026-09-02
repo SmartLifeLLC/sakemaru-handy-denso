@@ -33,12 +33,12 @@ class InventoryCountViewModel @Inject constructor(
     private val json: Json
 ) : ViewModel() {
     private val preferences = context.getSharedPreferences("inventory_count_cache", Context.MODE_PRIVATE)
-    private val _state = MutableStateFlow(InventoryCountState(loading = true))
+    private val _state = MutableStateFlow(InventoryCountState())
     val state: StateFlow<InventoryCountState> = _state.asStateFlow()
 
     init {
         SoundUtils.init(context)
-        loadInstructions()
+        restoreBestCache()
     }
 
     fun loadInstructions() {
@@ -72,9 +72,6 @@ class InventoryCountViewModel @Inject constructor(
                         )
                     }
                     selected?.let { restoreCache(it.id) }
-                    if (selected != null && _state.value.allItems.isEmpty()) {
-                        syncAllItems()
-                    }
                 }
                 .onFailure { e ->
                     _state.update { it.copy(loading = false, error = e.message ?: "棚卸し指示の確認に失敗しました") }
@@ -125,7 +122,6 @@ class InventoryCountViewModel @Inject constructor(
                 error = null
             )
         }
-        syncAllItems()
     }
 
     fun syncAllItems() {
@@ -397,10 +393,10 @@ class InventoryCountViewModel @Inject constructor(
     }
 
     fun confirmInput() {
-        saveLocalInput()
+        val savedInput = saveLocalInput()
         val current = _state.value
         val item = current.selectedItem ?: return
-        val input = current.dirtyInputs[item.id]
+        val input = savedInput ?: current.dirtyInputs[item.id]
         SoundUtils.playSuccess()
         _state.update {
             it.copy(
@@ -413,7 +409,11 @@ class InventoryCountViewModel @Inject constructor(
                 scannedCode = null,
                 scanPackageQuantity = null,
                 accumulatedBase = null,
-                message = "${item.itemName} の入力を保存しました（総バラ: ${input?.totalPieces ?: 0}）",
+                message = if (input == null) {
+                    "${item.itemName} の入力を相殺しました"
+                } else {
+                    "${item.itemName} の入力を保存しました（総バラ: ${input.totalPieces}）"
+                },
                 error = null
             )
         }
@@ -430,8 +430,9 @@ class InventoryCountViewModel @Inject constructor(
     }
 
     fun setCaseQuantity(value: String) {
-        val filtered = value.filter(Char::isDigit)
-        if (filtered.length - _state.value.caseQuantity.length >= 4) {
+        val filtered = normalizeQuantityInput(value)
+        val currentDigits = _state.value.caseQuantity.count(Char::isDigit)
+        if (filtered.count(Char::isDigit) - currentDigits >= 4) {
             _state.update { it.copy(caseQuantity = "") }
             SoundUtils.playErrorWithVibration(context)
             return
@@ -440,8 +441,9 @@ class InventoryCountViewModel @Inject constructor(
     }
 
     fun setPieceQuantity(value: String) {
-        val filtered = value.filter(Char::isDigit)
-        if (filtered.length - _state.value.pieceQuantity.length >= 4) {
+        val filtered = normalizeQuantityInput(value)
+        val currentDigits = _state.value.pieceQuantity.count(Char::isDigit)
+        if (filtered.count(Char::isDigit) - currentDigits >= 4) {
             _state.update { it.copy(pieceQuantity = "") }
             SoundUtils.playErrorWithVibration(context)
             return
@@ -449,14 +451,25 @@ class InventoryCountViewModel @Inject constructor(
         _state.update { it.copy(pieceQuantity = filtered) }
     }
 
-    private fun saveLocalInput() {
+    fun toggleCaseQuantitySign() {
+        _state.update { it.copy(caseQuantity = toggleQuantitySign(it.caseQuantity)) }
+    }
+
+    fun togglePieceQuantitySign() {
+        _state.update { it.copy(pieceQuantity = toggleQuantitySign(it.pieceQuantity)) }
+    }
+
+    private fun saveLocalInput(): LocalInventoryInput? {
         val current = _state.value
-        val item = current.selectedItem ?: return
-        if (current.caseQuantity.isBlank() && current.pieceQuantity.isBlank()) {
-            return
+        val item = current.selectedItem ?: return null
+        val parsedCase = current.caseQuantity.toIntOrNull()
+        val parsedPiece = current.pieceQuantity.toIntOrNull()
+        if (parsedCase == null && parsedPiece == null) {
+            return null
         }
-        val incrementCase = current.caseQuantity.toIntOrNull() ?: 0
-        val incrementPiece = current.pieceQuantity.toIntOrNull() ?: 0
+        val incrementCase = parsedCase ?: 0
+        val incrementPiece = parsedPiece ?: 0
+        val hasNegativeInput = incrementCase < 0 || incrementPiece < 0
         val base = current.accumulatedBase
         val existing = current.dirtyInputs[item.id]
         val packageQuantity = current.scanPackageQuantity ?: existing?.packageQuantity ?: scannedPackageQuantityFor(item, current)
@@ -464,6 +477,11 @@ class InventoryCountViewModel @Inject constructor(
         val baseTotal = base?.totalPieces ?: 0
         val incrementTotal = (incrementCase * capacityCase) + incrementPiece
         val total = baseTotal + incrementTotal
+        if (hasNegativeInput && total == 0) {
+            _state.update { it.copy(dirtyInputs = it.dirtyInputs - item.id) }
+            persistCache()
+            return null
+        }
         val canMergeCasePiece = base != null && base.packageQuantity == packageQuantity
         val caseQty = if (canMergeCasePiece) base.caseQuantity + incrementCase else incrementCase
         val pieceQty = if (canMergeCasePiece) base.pieceQuantity + incrementPiece else incrementPiece
@@ -482,14 +500,23 @@ class InventoryCountViewModel @Inject constructor(
         )
         _state.update { it.copy(dirtyInputs = it.dirtyInputs + (item.id to input)) }
         persistCache()
+        return input
     }
 
     fun finishRound() {
         val current = _state.value
-        if (current.submitting) return
+        Log.d("InventoryCount", "finishRound: submitting=${current.submitting} selectedCount=${current.selectedCount?.id} countRound=${current.countRound} dirtyInputs=${current.dirtyInputs.size}")
+        if (current.submitting) {
+            Log.w("InventoryCount", "finishRound: already submitting, skipping")
+            return
+        }
 
-        val count = current.selectedCount ?: return
+        val count = current.selectedCount ?: run {
+            Log.w("InventoryCount", "finishRound: selectedCount is null, aborting")
+            return
+        }
         val inputs = current.dirtyInputs.values.filter { it.countRound == current.countRound }
+        Log.d("InventoryCount", "finishRound: filtered inputs=${inputs.size} (all dirty rounds=${current.dirtyInputs.values.map { it.countRound }.toSet()})")
         if (inputs.isEmpty()) {
             _state.update { it.copy(error = "${roundLabel(current.countRound)}の未送信入力はありません") }
             return
@@ -522,15 +549,20 @@ class InventoryCountViewModel @Inject constructor(
                     }
                 )
 
+                Log.d("InventoryCount", "finishRound: sending chunk ${index + 1}/${chunks.size} with ${chunk.size} items, countId=${count.id}, countRound=${current.countRound}")
                 val result = runCatching { api.submitBulkCounts(count.id, request) }
                 if (result.isFailure) {
-                    failureMessage = result.exceptionOrNull()?.message ?: "送信に失敗しました。ローカル入力は保持されています"
+                    val ex = result.exceptionOrNull()
+                    Log.e("InventoryCount", "finishRound: API call failed: ${ex?.javaClass?.simpleName}: ${ex?.message}", ex)
+                    failureMessage = ex?.message ?: "送信に失敗しました。ローカル入力は保持されています"
                     break
                 }
 
                 val response = result.getOrThrow()
+                Log.d("InventoryCount", "finishRound: API response isSuccess=${response.isSuccess} code=${response.code} errorMessage=${response.result?.errorMessage}")
 
                 if (!response.isSuccess) {
+                    Log.w("InventoryCount", "finishRound: server returned isSuccess=false: ${response.result?.errorMessage} errors=${response.result?.errors} debug=${response.result?.debugMessage}")
                     failureMessage = response.result?.errorMessage ?: "送信に失敗しました。ローカル入力は保持されています"
                     break
                 }
@@ -540,10 +572,12 @@ class InventoryCountViewModel @Inject constructor(
                 updatedById += updated.associateBy { it.id }
                 missingItemIds += data?.missingItemIds.orEmpty()
                 sentItemIds += updated.map { it.id }
+                Log.d("InventoryCount", "finishRound: chunk result updated=${updated.size} missing=${data?.missingItemIds.orEmpty().size} sentSoFar=${sentItemIds.size}")
             }
 
             val sentInputs = inputs.filter { it.itemId in sentItemIds }
             val partial = sentInputs.size != inputs.size || missingItemIds.isNotEmpty() || failureMessage != null
+            Log.d("InventoryCount", "finishRound: done. sent=${sentInputs.size}/${inputs.size} missing=${missingItemIds.size} partial=$partial failureMessage=$failureMessage")
             _state.update { state ->
                 val sent = sentInputs.map { it.copy(sent = true, updatedAt = System.currentTimeMillis()) }
                 state.copy(
@@ -710,6 +744,33 @@ class InventoryCountViewModel @Inject constructor(
 
         return entries.firstOrNull { it.itemId == item.itemId }?.packageQuantity
     }
+
+    private fun normalizeQuantityInput(value: String): String {
+        var hasMinus = false
+        val digits = StringBuilder()
+
+        for (char in value) {
+            when {
+                char.isDigit() -> digits.append(char)
+                char.isInventoryMinusSign() && !hasMinus && digits.isEmpty() -> hasMinus = true
+            }
+        }
+
+        return if (hasMinus) "-$digits" else digits.toString()
+    }
+
+    private fun toggleQuantitySign(value: String): String {
+        val normalized = normalizeQuantityInput(value)
+
+        return when {
+            normalized.startsWith("-") -> normalized.drop(1)
+            normalized.isBlank() -> "-"
+            else -> "-$normalized"
+        }
+    }
+
+    private fun Char.isInventoryMinusSign(): Boolean =
+        this == '-' || this == 'ー' || this == '－' || this == '−' || this == '―' || this == '–' || this == '—'
 
     private fun normalize(value: String): String =
         value.map {

@@ -557,7 +557,6 @@ private fun NoSoftKeyboardLoginField(
                 editText.setShowSoftInputOnFocus(false)
                 editText.isEnabled = enabled
                 editText.alpha = if (enabled) 1f else 0.45f
-                editText.applyLoginInputSettings(isPassword)
                 if (editText.text.toString() != value) {
                     editText.tag = true
                     editText.setText(value)

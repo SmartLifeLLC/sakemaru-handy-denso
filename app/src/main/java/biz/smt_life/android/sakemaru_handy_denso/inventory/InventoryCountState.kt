@@ -47,7 +47,7 @@ data class InventoryCountState(
         val sentTotal = sentHistory.filter { it.itemId == itemId }.sumOf { it.totalPieces }
         dirtyTotal + sentTotal
     }
-    val hasInstruction: Boolean = counts.isNotEmpty()
+    val hasInstruction: Boolean = selectedCount != null || counts.isNotEmpty()
     val hasLocalData: Boolean = allItems.isNotEmpty()
     val dirtyCount: Int = dirtyInputs.size
 }

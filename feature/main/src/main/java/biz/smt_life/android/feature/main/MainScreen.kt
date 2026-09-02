@@ -939,7 +939,7 @@ private fun MainScreenReadyPreview() {
                 pendingCounts = PendingCounts(5, 12, 3),
                 currentDate = "2024/10/07 Mon",
                 hostUrl = "https://handy.click",
-                appVersion = "Ver.1.5.0",
+                appVersion = "Ver.1.5.4",
                 authKey = "test_auth_key",
                 warehouseId = "001"
             ),

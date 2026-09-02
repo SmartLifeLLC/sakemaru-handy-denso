@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.graphics.Color as AndroidColor
 import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -85,6 +86,8 @@ import java.time.format.DateTimeFormatter
 
 private val inventorySyncTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd HH:mm")
 
+private enum class InventoryQuantityInputTarget { CASE, PIECE }
+
 @Composable
 fun InventoryCountScreen(
     onNavigateBack: () -> Unit,
@@ -93,10 +96,32 @@ fun InventoryCountScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
     var showResetDialog by remember { mutableStateOf(false) }
+    var lastF2BackAt by remember { mutableStateOf(0L) }
+    var quantityInputTarget by remember { mutableStateOf(InventoryQuantityInputTarget.PIECE) }
 
     fun handleHardwareKey(keyCode: Int): Boolean {
         return when (keyCode) {
+            AndroidKeyEvent.KEYCODE_F1 -> {
+                if (state.selectedItem == null) {
+                    false
+                } else {
+                    SoundUtils.playTick()
+                    when (quantityInputTarget) {
+                        InventoryQuantityInputTarget.CASE -> viewModel.toggleCaseQuantitySign()
+                        InventoryQuantityInputTarget.PIECE -> viewModel.togglePieceQuantitySign()
+                    }
+                    true
+                }
+            }
             AndroidKeyEvent.KEYCODE_F2 -> {
+                if (state.selectedTab == InventoryTab.SCAN && state.selectedItem == null && state.hasLocalData) {
+                    return true
+                }
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastF2BackAt < 500L) {
+                    return true
+                }
+                lastF2BackAt = now
                 SoundUtils.playTick()
                 when {
                     state.selectedItem != null -> viewModel.clearSelection()
@@ -200,6 +225,7 @@ fun InventoryCountScreen(
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
                     Key.F2 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_F2)
+                    Key.F1 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_F1)
                     Key.F3 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_F3)
                     Key.F4 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_F4)
                     Key.One, Key.NumPad1 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_1)
@@ -227,7 +253,12 @@ fun InventoryCountScreen(
         } else if (!state.hasInstruction) {
             InstructionCheckPanel(state, viewModel, modifier = Modifier.weight(1f))
         } else if (state.selectedItem != null) {
-            ItemInputPanel(state, viewModel, modifier = Modifier.weight(1f))
+            ItemInputPanel(
+                state = state,
+                viewModel = viewModel,
+                onQuantityInputFocused = { quantityInputTarget = it },
+                modifier = Modifier.weight(1f)
+            )
         } else when (state.selectedTab) {
             InventoryTab.MENU -> InventoryMenuPanel(
                 state,
@@ -682,6 +713,14 @@ private fun ScanTab(state: InventoryCountState, viewModel: InventoryCountViewMod
             modifier = Modifier.size(48.dp),
             tint = Color(0xFF1976D2)
         )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = { SoundUtils.playTick(); viewModel.selectTab(InventoryTab.MENU) },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp)
+        ) {
+            Text("戻る", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Text("商品をスキャンしてください", fontSize = 20.sp, color = Color.DarkGray)
 
@@ -702,6 +741,7 @@ private fun ScanTab(state: InventoryCountState, viewModel: InventoryCountViewMod
 private fun ItemInputPanel(
     state: InventoryCountState,
     viewModel: InventoryCountViewModel,
+    onQuantityInputFocused: (InventoryQuantityInputTarget) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val item = state.selectedItem ?: return
@@ -767,9 +807,14 @@ private fun ItemInputPanel(
 
         LaunchedEffect(item.id) {
             when {
-                state.scanQuantityType == "CASE" && caseEnabled -> caseFocus.requestFocus()
-                !caseEnabled -> pieceFocus.requestFocus()
-                else -> pieceFocus.requestFocus()
+                state.scanQuantityType == "CASE" && caseEnabled -> {
+                    onQuantityInputFocused(InventoryQuantityInputTarget.CASE)
+                    caseFocus.requestFocus()
+                }
+                else -> {
+                    onQuantityInputFocused(InventoryQuantityInputTarget.PIECE)
+                    pieceFocus.requestFocus()
+                }
             }
         }
 
@@ -786,6 +831,9 @@ private fun ItemInputPanel(
                 isFocusTarget = state.scanQuantityType == "CASE" && caseEnabled,
                 textSizeSp = 24f,
                 textBold = true,
+                allowNegative = true,
+                onFocused = { onQuantityInputFocused(InventoryQuantityInputTarget.CASE) },
+                onToggleNegative = viewModel::toggleCaseQuantitySign,
                 onMoveNext = {
                     pieceFocus.requestFocus()
                     true
@@ -803,6 +851,9 @@ private fun ItemInputPanel(
                 isFocusTarget = state.scanQuantityType != "CASE" || !caseEnabled,
                 textSizeSp = 24f,
                 textBold = true,
+                allowNegative = true,
+                onFocused = { onQuantityInputFocused(InventoryQuantityInputTarget.PIECE) },
+                onToggleNegative = viewModel::togglePieceQuantitySign,
                 onMovePrevious = {
                     if (caseEnabled) {
                         caseFocus.requestFocus()
@@ -816,7 +867,7 @@ private fun ItemInputPanel(
         }
 
         // 入力済み総バラ
-        if (state.previousTotalPieces > 0) {
+        if (state.previousTotalPieces != 0) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -841,7 +892,6 @@ private fun ItemInputPanel(
             Text("今回 総バラ", fontSize = 16.sp, color = Color.Gray)
             Text("${state.currentInputPieces}", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.Black)
         }
-
         // Buttons
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(
@@ -852,7 +902,7 @@ private fun ItemInputPanel(
             }
             Button(
                 onClick = { viewModel.confirmInput() },
-                enabled = state.caseQuantity.isNotBlank() || state.pieceQuantity.isNotBlank(),
+                enabled = state.caseQuantity.toIntOrNull() != null || state.pieceQuantity.toIntOrNull() != null,
                 modifier = Modifier.weight(1f).height(64.dp)
             ) {
                 Text("(F3)確定", fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -874,6 +924,9 @@ private fun InventoryNumericEditText(
     selectAllOnFocus: Boolean = true,
     textSizeSp: Float = 20f,
     textBold: Boolean = false,
+    allowNegative: Boolean = false,
+    onFocused: (() -> Unit)? = null,
+    onToggleNegative: (() -> Unit)? = null,
     onEnter: (() -> Boolean)? = null,
     onMovePrevious: (() -> Boolean)? = null,
     onMoveNext: (() -> Boolean)? = null,
@@ -884,17 +937,34 @@ private fun InventoryNumericEditText(
     val currentOnMovePrevious by rememberUpdatedState(onMovePrevious)
     val currentOnMoveNext by rememberUpdatedState(onMoveNext)
     val currentOnEditTextReady by rememberUpdatedState(onEditTextReady)
+    val currentOnFocused by rememberUpdatedState(onFocused)
+    val currentOnToggleNegative by rememberUpdatedState(onToggleNegative)
     val currentValue by rememberUpdatedState(value)
     val currentEnabled by rememberUpdatedState(enabled)
 
     Column(modifier = modifier) {
         label?.let {
-            Text(
-                text = it,
-                fontSize = 14.sp,
-                color = Color.DarkGray,
-                modifier = Modifier.padding(bottom = 2.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = it,
+                    fontSize = 14.sp,
+                    color = Color.DarkGray
+                )
+                if (allowNegative) {
+                    Text(
+                        text = "F1(-)入力",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFE65100)
+                    )
+                }
+            }
         }
 
         AndroidView(
@@ -904,10 +974,10 @@ private fun InventoryNumericEditText(
                 .focusRequester(focusRequester),
             factory = { context ->
                 EditText(context).apply {
-                    applyInventoryNumericInputSettings(textSizeSp, textBold)
+                    applyInventoryNumericInputSettings(textSizeSp, textBold, allowNegative)
                     isEnabled = enabled
                     hint = placeholder.orEmpty()
-                    setText(normalizeInventoryNumericInput(value))
+                    setText(normalizeInventoryNumericInput(value, allowNegative))
                     setSelection(text.length)
                     addTextChangedListener(object : TextWatcher {
                         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -917,7 +987,7 @@ private fun InventoryNumericEditText(
                             if (tag == true) return
 
                             val raw = s?.toString().orEmpty()
-                            val normalized = normalizeInventoryNumericInput(raw)
+                            val normalized = normalizeInventoryNumericInput(raw, allowNegative)
                             if (raw != normalized) {
                                 tag = true
                                 setText(normalized)
@@ -933,12 +1003,9 @@ private fun InventoryNumericEditText(
                     setOnFocusChangeListener { _, hasFocus ->
                         setShowSoftInputOnFocus(false)
                         if (hasFocus) {
+                            currentOnFocused?.invoke()
                             post {
-                                if (selectAllOnFocus) {
-                                    selectAll()
-                                } else {
-                                    setSelection(text?.length ?: 0)
-                                }
+                                applyInventorySelection(selectAllOnFocus)
                                 hideSoftwareKeyboard(this)
                             }
                         }
@@ -949,11 +1016,7 @@ private fun InventoryNumericEditText(
                             setShowSoftInputOnFocus(false)
                             requestFocus()
                             post {
-                                if (selectAllOnFocus) {
-                                    selectAll()
-                                } else {
-                                    setSelection(text?.length ?: 0)
-                                }
+                                applyInventorySelection(selectAllOnFocus)
                                 hideSoftwareKeyboard(this)
                             }
                         }
@@ -979,6 +1042,14 @@ private fun InventoryNumericEditText(
                             return@setOnKeyListener false
                         }
                         when (keyCode) {
+                            AndroidKeyEvent.KEYCODE_F1 -> {
+                                if (allowNegative) {
+                                    currentOnToggleNegative?.invoke()
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
                             AndroidKeyEvent.KEYCODE_ENTER,
                             AndroidKeyEvent.KEYCODE_NUMPAD_ENTER,
                             AndroidKeyEvent.KEYCODE_DPAD_CENTER -> currentOnEnter?.invoke() ?: false
@@ -1003,11 +1074,11 @@ private fun InventoryNumericEditText(
                 }
             },
             update = { editText ->
-                val normalizedValue = normalizeInventoryNumericInput(value)
+                val normalizedValue = normalizeInventoryNumericInput(value, allowNegative)
                 editText.setShowSoftInputOnFocus(false)
                 editText.isEnabled = enabled
                 editText.hint = placeholder.orEmpty()
-                editText.inputType = InputType.TYPE_CLASS_NUMBER
+                editText.inputType = inventoryInputType(allowNegative)
                 editText.imeOptions = EditorInfo.IME_ACTION_NONE
                 editText.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
                 editText.setTypeface(Typeface.MONOSPACE, if (textBold) Typeface.BOLD else Typeface.NORMAL)
@@ -1018,22 +1089,14 @@ private fun InventoryNumericEditText(
                 if (editText.text.toString() != normalizedValue) {
                     editText.tag = true
                     editText.setText(normalizedValue)
-                    if (editText.hasFocus() && selectAllOnFocus) {
-                        editText.selectAll()
-                    } else {
-                        editText.setSelection(normalizedValue.length)
-                    }
+                    editText.applyInventorySelection(editText.hasFocus() && selectAllOnFocus)
                     editText.tag = false
                 }
                 if (isFocusTarget && enabled && !editText.hasFocus()) {
                     editText.requestFocus()
                     editText.post {
                         editText.setShowSoftInputOnFocus(false)
-                        if (selectAllOnFocus) {
-                            editText.selectAll()
-                        } else {
-                            editText.setSelection(editText.text?.length ?: 0)
-                        }
+                        editText.applyInventorySelection(selectAllOnFocus)
                         hideSoftwareKeyboard(editText)
                     }
                 } else if (editText.hasFocus()) {
@@ -1044,8 +1107,8 @@ private fun InventoryNumericEditText(
     }
 }
 
-private fun EditText.applyInventoryNumericInputSettings(textSizeSp: Float, textBold: Boolean) {
-    inputType = InputType.TYPE_CLASS_NUMBER
+private fun EditText.applyInventoryNumericInputSettings(textSizeSp: Float, textBold: Boolean, allowNegative: Boolean) {
+    inputType = inventoryInputType(allowNegative)
     imeOptions = EditorInfo.IME_ACTION_NONE
     gravity = Gravity.CENTER_VERTICAL
     isSingleLine = true
@@ -1063,8 +1126,35 @@ private fun EditText.applyInventoryNumericInputSettings(textSizeSp: Float, textB
     )
 }
 
-private fun normalizeInventoryNumericInput(value: String): String =
-    value.filter { it.isDigit() }
+private fun EditText.applyInventorySelection(selectAllOnFocus: Boolean) {
+    val currentText = text?.toString().orEmpty()
+    if (selectAllOnFocus && !currentText.startsWith("-")) {
+        selectAll()
+    } else {
+        setSelection(currentText.length)
+    }
+}
+
+private fun inventoryInputType(allowNegative: Boolean): Int =
+    InputType.TYPE_CLASS_NUMBER or (if (allowNegative) InputType.TYPE_NUMBER_FLAG_SIGNED else 0)
+
+private fun normalizeInventoryNumericInput(value: String, allowNegative: Boolean = false): String {
+    if (!allowNegative) return value.filter { it.isDigit() }
+
+    var hasMinus = false
+    val digits = StringBuilder()
+    for (char in value) {
+        when {
+            char.isDigit() -> digits.append(char)
+            char.isInventoryMinusSign() && !hasMinus && digits.isEmpty() -> hasMinus = true
+        }
+    }
+
+    return if (hasMinus) "-$digits" else digits.toString()
+}
+
+private fun Char.isInventoryMinusSign(): Boolean =
+    this == '-' || this == 'ー' || this == '－' || this == '−' || this == '―' || this == '–' || this == '—'
 
 private fun createInventoryEditTextBackground(
     backgroundColor: Int,

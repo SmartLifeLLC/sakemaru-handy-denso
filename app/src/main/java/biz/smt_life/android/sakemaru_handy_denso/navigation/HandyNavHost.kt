@@ -82,6 +82,7 @@ fun HandyNavHost(
             currentRoute == Routes.IncomingScheduleList.route ||
             currentRoute == Routes.IncomingInput.route ||
             currentRoute == Routes.IncomingHistory.route ||
+            currentRoute == Routes.Inventory.route ||
             currentRoute == Routes.OutboundInspectionPeriod.route ||
             currentRoute == Routes.OutboundInspectionCourse.route ||
             currentRoute == Routes.OutboundInspectionFloor.route ||
@@ -93,6 +94,7 @@ fun HandyNavHost(
             Routes.IncomingScheduleList.route -> popBackTo(Routes.IncomingProductList.route)
             Routes.IncomingInput.route -> popBackTo(Routes.IncomingScheduleList.route)
             Routes.IncomingHistory.route -> popBackTo(Routes.IncomingProductList.route)
+            Routes.Inventory.route -> popBackTo(Routes.Main.route)
             Routes.OutboundInspectionPeriod.route -> popBackTo(Routes.Main.route)
             Routes.OutboundInspectionCourse.route -> popBackTo(Routes.OutboundInspectionPeriod.route)
             Routes.OutboundInspectionFloor.route -> popBackTo(Routes.OutboundInspectionCourse.route)
@@ -444,7 +446,7 @@ fun HandyNavHost(
         composable(Routes.Inventory.route) {
             InventoryCountScreen(
                 onNavigateBack = {
-                    navController.popBackStack()
+                    popBackTo(Routes.Main.route)
                 }
             )
         }
