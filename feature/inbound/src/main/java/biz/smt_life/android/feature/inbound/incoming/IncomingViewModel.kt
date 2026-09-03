@@ -1517,7 +1517,7 @@ class IncomingViewModel @Inject constructor(
     }
 
     private companion object {
-        const val APP_VERSION = "1.5.4"
+        const val APP_VERSION = "1.6.0"
         val SYNCED_AT_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     }
 }
