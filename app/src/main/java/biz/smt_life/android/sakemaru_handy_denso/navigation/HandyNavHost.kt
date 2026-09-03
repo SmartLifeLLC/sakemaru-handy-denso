@@ -43,6 +43,7 @@ import biz.smt_life.android.feature.outbound.inspection.OutboundInspectionScanSc
 import biz.smt_life.android.feature.outbound.inspection.OutboundInspectionViewModel
 import biz.smt_life.android.feature.settings.SettingsScreen
 import biz.smt_life.android.sakemaru_handy_denso.inventory.InventoryCountScreen
+import biz.smt_life.android.sakemaru_handy_denso.warehousetransfer.WarehouseTransferScreen
 
 @Composable
 fun HandyNavHost(
@@ -439,6 +440,14 @@ fun HandyNavHost(
             LocationSearchScreen(
                 onNavigateBack = {
                     navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Routes.Move.route) {
+            WarehouseTransferScreen(
+                onNavigateBack = {
+                    popBackTo(Routes.Main.route)
                 }
             )
         }
