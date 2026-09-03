@@ -10,14 +10,13 @@ import biz.smt_life.android.core.network.api.InventoryCountApi
 import biz.smt_life.android.core.network.model.InventoryBulkCountItemRequest
 import biz.smt_life.android.core.network.model.InventoryBulkCountRequest
 import biz.smt_life.android.core.network.model.InventoryCountItemResponse
+import biz.smt_life.android.core.network.model.InventoryCountResponse
 import biz.smt_life.android.core.network.model.JanCodeEntry
 import biz.smt_life.android.core.ui.TokenManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import javax.inject.Inject
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,12 +33,12 @@ class InventoryCountViewModel @Inject constructor(
     private val json: Json
 ) : ViewModel() {
     private val preferences = context.getSharedPreferences("inventory_count_cache", Context.MODE_PRIVATE)
-    private val _state = MutableStateFlow(InventoryCountState(loading = true))
+    private val _state = MutableStateFlow(InventoryCountState())
     val state: StateFlow<InventoryCountState> = _state.asStateFlow()
 
     init {
         SoundUtils.init(context)
-        loadInstructions()
+        restoreBestCache()
     }
 
     fun loadInstructions() {
@@ -56,7 +55,7 @@ class InventoryCountViewModel @Inject constructor(
                                 message = null
                             )
                         }
-                        restoreAnyCache()
+                        restoreBestCache()
                         return@onSuccess
                     }
 
@@ -73,13 +72,10 @@ class InventoryCountViewModel @Inject constructor(
                         )
                     }
                     selected?.let { restoreCache(it.id) }
-                    if (selected != null && _state.value.allItems.isEmpty()) {
-                        syncAllItems()
-                    }
                 }
                 .onFailure { e ->
                     _state.update { it.copy(loading = false, error = e.message ?: "棚卸し指示の確認に失敗しました") }
-                    restoreAnyCache()
+                    restoreBestCache()
                 }
         }
     }
@@ -96,6 +92,7 @@ class InventoryCountViewModel @Inject constructor(
                 accumulatedBase = null,
                 dirtyInputs = emptyMap(),
                 sentHistory = emptyList(),
+                syncedAt = null,
                 message = null,
                 error = null
             )
@@ -114,6 +111,7 @@ class InventoryCountViewModel @Inject constructor(
                 janDictionary = emptyMap(),
                 dirtyInputs = emptyMap(),
                 sentHistory = emptyList(),
+                syncedAt = null,
                 caseQuantity = "",
                 pieceQuantity = "",
                 keyword = "",
@@ -124,7 +122,6 @@ class InventoryCountViewModel @Inject constructor(
                 error = null
             )
         }
-        syncAllItems()
     }
 
     fun syncAllItems() {
@@ -153,13 +150,14 @@ class InventoryCountViewModel @Inject constructor(
                     allItems = all,
                     items = emptyList(),
                     selectedItem = null,
-                    dirtyInputs = emptyMap(),
+                    dirtyInputs = remapDirtyInputs(it.dirtyInputs, all),
                     message = "商品 ${all.size} 件取得。JANコード取得中...",
                     error = null
                 )
             }
 
             // JAN辞書取得
+            val syncedAt = System.currentTimeMillis()
             runCatching { api.getJanCodes(count.id) }
                 .onSuccess { response ->
                     if (response.isSuccess) {
@@ -168,15 +166,16 @@ class InventoryCountViewModel @Inject constructor(
                             it.copy(
                                 syncing = false,
                                 janDictionary = dict,
+                                syncedAt = syncedAt,
                                 message = "同期完了（商品 ${all.size} 件 / JAN ${dict.size} 件）"
                             )
                         }
                     } else {
-                        _state.update { it.copy(syncing = false, message = "商品 ${all.size} 件取得完了") }
+                        _state.update { it.copy(syncing = false, syncedAt = syncedAt, message = "商品 ${all.size} 件取得完了") }
                     }
                 }
                 .onFailure {
-                    _state.update { it.copy(syncing = false, message = "商品 ${all.size} 件取得完了") }
+                    _state.update { it.copy(syncing = false, syncedAt = syncedAt, message = "商品 ${all.size} 件取得完了") }
                 }
 
             persistCache()
@@ -187,34 +186,16 @@ class InventoryCountViewModel @Inject constructor(
         _state.update { it.copy(selectedTab = tab) }
     }
 
-    private var scanAutoSearchJob: Job? = null
+    private var scanRequestSerial: Long = 0L
 
     fun setKeyword(value: String) {
-        val current = _state.value.keyword
-        val added = value.length - current.length
-
-        if (added >= 4) {
-            val currentState = _state.value
-            if (currentState.selectedItem != null &&
-                (currentState.caseQuantity.isNotBlank() || currentState.pieceQuantity.isNotBlank())) {
-                saveLocalInput()
-            }
-            val newValue = if (current.isNotEmpty() && value.startsWith(current)) {
-                value.substring(current.length)
-            } else {
-                value
-            }
-            _state.update { it.copy(keyword = newValue) }
-            scanAutoSearchJob?.cancel()
-            scanAutoSearchJob = viewModelScope.launch {
-                delay(200)
-                SoundUtils.playBeep()
-                scan()
-            }
-            return
+        _state.update {
+            it.copy(
+                keyword = value,
+                error = if (value.isNotBlank()) null else it.error,
+                message = if (value.isNotBlank()) null else it.message
+            )
         }
-
-        _state.update { it.copy(keyword = value) }
     }
 
     fun setNameKeyword(value: String) {
@@ -240,6 +221,7 @@ class InventoryCountViewModel @Inject constructor(
     }
 
     fun scan() {
+        val requestSerial = ++scanRequestSerial
         val raw = _state.value.keyword.trim()
         val keyword = normalize(raw)
         if (keyword.isEmpty()) {
@@ -255,8 +237,28 @@ class InventoryCountViewModel @Inject constructor(
         }
 
         fun applyResult(results: List<InventoryCountItemResponse>, quantityType: String?, packageQuantity: Int?) {
-            val singleItem = if (results.size == 1) results.first() else null
-            val existingInput = singleItem?.let { _state.value.dirtyInputs[it.id] }
+            if (results.size != 1) {
+                _state.update {
+                    it.copy(
+                        items = emptyList(),
+                        selectedItem = null,
+                        scanQuantityType = null,
+                        scannedCode = raw,
+                        scanPackageQuantity = null,
+                        accumulatedBase = null,
+                        caseQuantity = "",
+                        pieceQuantity = "",
+                        keyword = "",
+                        error = "コード不明",
+                        message = null
+                    )
+                }
+                SoundUtils.playError()
+                return
+            }
+
+            val singleItem = results.first()
+            val existingInput = _state.value.dirtyInputs[singleItem.id]
             _state.update {
                 it.copy(
                     items = results,
@@ -268,11 +270,11 @@ class InventoryCountViewModel @Inject constructor(
                     caseQuantity = "",
                     pieceQuantity = "",
                     keyword = "",
-                    error = if (results.size > 1) "複数の商品が見つかりました。選択してください" else null,
+                    error = null,
                     message = null
                 )
             }
-            if (singleItem != null) SoundUtils.playBeep()
+            SoundUtils.playBeep()
         }
 
         // 1. JAN辞書から検索
@@ -303,45 +305,8 @@ class InventoryCountViewModel @Inject constructor(
             return
         }
 
-        // 3. フォールバック: POST /scan でサーバー検索
-        scanRemote(raw)
-    }
-
-    private fun scanRemote(keyword: String) {
-        val count = _state.value.selectedCount ?: return
-        viewModelScope.launch {
-            _state.update { it.copy(message = "サーバー検索中...") }
-            runCatching { api.scanItem(count.id, mapOf("keyword" to keyword)) }
-                .onSuccess { response ->
-                    val results = response.result?.data?.items.orEmpty()
-                    if (results.isEmpty()) {
-                        _state.update { it.copy(error = "コード不明", message = null) }
-                        SoundUtils.playError()
-                    } else {
-                        val singleItem = if (results.size == 1) results.first() else null
-                        val existingInput = singleItem?.let { _state.value.dirtyInputs[it.id] }
-                        _state.update {
-                            it.copy(
-                                items = results,
-                                selectedItem = singleItem,
-                                scanQuantityType = null,
-                                scannedCode = keyword,
-                                scanPackageQuantity = null,
-                                accumulatedBase = existingInput,
-                                caseQuantity = "",
-                                pieceQuantity = "",
-                                error = if (results.size > 1) "複数の商品が見つかりました。選択してください" else null,
-                                message = null
-                            )
-                        }
-                        if (singleItem != null) SoundUtils.playBeep()
-                    }
-                }
-                .onFailure {
-                    _state.update { it.copy(error = "コード不明", message = null) }
-                    SoundUtils.playError()
-                }
-        }
+        _state.update { it.copy(error = "コード不明", message = null) }
+        SoundUtils.playError()
     }
 
     fun searchByName() {
@@ -428,10 +393,10 @@ class InventoryCountViewModel @Inject constructor(
     }
 
     fun confirmInput() {
-        saveLocalInput()
+        val savedInput = saveLocalInput()
         val current = _state.value
         val item = current.selectedItem ?: return
-        val input = current.dirtyInputs[item.id]
+        val input = savedInput ?: current.dirtyInputs[item.id]
         SoundUtils.playSuccess()
         _state.update {
             it.copy(
@@ -444,7 +409,11 @@ class InventoryCountViewModel @Inject constructor(
                 scannedCode = null,
                 scanPackageQuantity = null,
                 accumulatedBase = null,
-                message = "${item.itemName} の入力を保存しました（総バラ: ${input?.totalPieces ?: 0}）",
+                message = if (input == null) {
+                    "${item.itemName} の入力を相殺しました"
+                } else {
+                    "${item.itemName} の入力を保存しました（総バラ: ${input.totalPieces}）"
+                },
                 error = null
             )
         }
@@ -461,8 +430,9 @@ class InventoryCountViewModel @Inject constructor(
     }
 
     fun setCaseQuantity(value: String) {
-        val filtered = value.filter(Char::isDigit)
-        if (filtered.length - _state.value.caseQuantity.length >= 4) {
+        val filtered = normalizeQuantityInput(value)
+        val currentDigits = _state.value.caseQuantity.count(Char::isDigit)
+        if (filtered.count(Char::isDigit) - currentDigits >= 4) {
             _state.update { it.copy(caseQuantity = "") }
             SoundUtils.playErrorWithVibration(context)
             return
@@ -471,8 +441,9 @@ class InventoryCountViewModel @Inject constructor(
     }
 
     fun setPieceQuantity(value: String) {
-        val filtered = value.filter(Char::isDigit)
-        if (filtered.length - _state.value.pieceQuantity.length >= 4) {
+        val filtered = normalizeQuantityInput(value)
+        val currentDigits = _state.value.pieceQuantity.count(Char::isDigit)
+        if (filtered.count(Char::isDigit) - currentDigits >= 4) {
             _state.update { it.copy(pieceQuantity = "") }
             SoundUtils.playErrorWithVibration(context)
             return
@@ -480,14 +451,25 @@ class InventoryCountViewModel @Inject constructor(
         _state.update { it.copy(pieceQuantity = filtered) }
     }
 
-    private fun saveLocalInput() {
+    fun toggleCaseQuantitySign() {
+        _state.update { it.copy(caseQuantity = toggleQuantitySign(it.caseQuantity)) }
+    }
+
+    fun togglePieceQuantitySign() {
+        _state.update { it.copy(pieceQuantity = toggleQuantitySign(it.pieceQuantity)) }
+    }
+
+    private fun saveLocalInput(): LocalInventoryInput? {
         val current = _state.value
-        val item = current.selectedItem ?: return
-        if (current.caseQuantity.isBlank() && current.pieceQuantity.isBlank()) {
-            return
+        val item = current.selectedItem ?: return null
+        val parsedCase = current.caseQuantity.toIntOrNull()
+        val parsedPiece = current.pieceQuantity.toIntOrNull()
+        if (parsedCase == null && parsedPiece == null) {
+            return null
         }
-        val incrementCase = current.caseQuantity.toIntOrNull() ?: 0
-        val incrementPiece = current.pieceQuantity.toIntOrNull() ?: 0
+        val incrementCase = parsedCase ?: 0
+        val incrementPiece = parsedPiece ?: 0
+        val hasNegativeInput = incrementCase < 0 || incrementPiece < 0
         val base = current.accumulatedBase
         val existing = current.dirtyInputs[item.id]
         val packageQuantity = current.scanPackageQuantity ?: existing?.packageQuantity ?: scannedPackageQuantityFor(item, current)
@@ -495,6 +477,11 @@ class InventoryCountViewModel @Inject constructor(
         val baseTotal = base?.totalPieces ?: 0
         val incrementTotal = (incrementCase * capacityCase) + incrementPiece
         val total = baseTotal + incrementTotal
+        if (hasNegativeInput && total == 0) {
+            _state.update { it.copy(dirtyInputs = it.dirtyInputs - item.id) }
+            persistCache()
+            return null
+        }
         val canMergeCasePiece = base != null && base.packageQuantity == packageQuantity
         val caseQty = if (canMergeCasePiece) base.caseQuantity + incrementCase else incrementCase
         val pieceQty = if (canMergeCasePiece) base.pieceQuantity + incrementPiece else incrementPiece
@@ -513,12 +500,23 @@ class InventoryCountViewModel @Inject constructor(
         )
         _state.update { it.copy(dirtyInputs = it.dirtyInputs + (item.id to input)) }
         persistCache()
+        return input
     }
 
     fun finishRound() {
         val current = _state.value
-        val count = current.selectedCount ?: return
+        Log.d("InventoryCount", "finishRound: submitting=${current.submitting} selectedCount=${current.selectedCount?.id} countRound=${current.countRound} dirtyInputs=${current.dirtyInputs.size}")
+        if (current.submitting) {
+            Log.w("InventoryCount", "finishRound: already submitting, skipping")
+            return
+        }
+
+        val count = current.selectedCount ?: run {
+            Log.w("InventoryCount", "finishRound: selectedCount is null, aborting")
+            return
+        }
         val inputs = current.dirtyInputs.values.filter { it.countRound == current.countRound }
+        Log.d("InventoryCount", "finishRound: filtered inputs=${inputs.size} (all dirty rounds=${current.dirtyInputs.values.map { it.countRound }.toSet()})")
         if (inputs.isEmpty()) {
             _state.update { it.copy(error = "${roundLabel(current.countRound)}の未送信入力はありません") }
             return
@@ -551,15 +549,20 @@ class InventoryCountViewModel @Inject constructor(
                     }
                 )
 
+                Log.d("InventoryCount", "finishRound: sending chunk ${index + 1}/${chunks.size} with ${chunk.size} items, countId=${count.id}, countRound=${current.countRound}")
                 val result = runCatching { api.submitBulkCounts(count.id, request) }
                 if (result.isFailure) {
-                    failureMessage = result.exceptionOrNull()?.message ?: "送信に失敗しました。ローカル入力は保持されています"
+                    val ex = result.exceptionOrNull()
+                    Log.e("InventoryCount", "finishRound: API call failed: ${ex?.javaClass?.simpleName}: ${ex?.message}", ex)
+                    failureMessage = ex?.message ?: "送信に失敗しました。ローカル入力は保持されています"
                     break
                 }
 
                 val response = result.getOrThrow()
+                Log.d("InventoryCount", "finishRound: API response isSuccess=${response.isSuccess} code=${response.code} errorMessage=${response.result?.errorMessage}")
 
                 if (!response.isSuccess) {
+                    Log.w("InventoryCount", "finishRound: server returned isSuccess=false: ${response.result?.errorMessage} errors=${response.result?.errors} debug=${response.result?.debugMessage}")
                     failureMessage = response.result?.errorMessage ?: "送信に失敗しました。ローカル入力は保持されています"
                     break
                 }
@@ -569,10 +572,12 @@ class InventoryCountViewModel @Inject constructor(
                 updatedById += updated.associateBy { it.id }
                 missingItemIds += data?.missingItemIds.orEmpty()
                 sentItemIds += updated.map { it.id }
+                Log.d("InventoryCount", "finishRound: chunk result updated=${updated.size} missing=${data?.missingItemIds.orEmpty().size} sentSoFar=${sentItemIds.size}")
             }
 
             val sentInputs = inputs.filter { it.itemId in sentItemIds }
             val partial = sentInputs.size != inputs.size || missingItemIds.isNotEmpty() || failureMessage != null
+            Log.d("InventoryCount", "finishRound: done. sent=${sentInputs.size}/${inputs.size} missing=${missingItemIds.size} partial=$partial failureMessage=$failureMessage")
             _state.update { state ->
                 val sent = sentInputs.map { it.copy(sent = true, updatedAt = System.currentTimeMillis()) }
                 state.copy(
@@ -606,23 +611,68 @@ class InventoryCountViewModel @Inject constructor(
                 janDictionary = cache.janDictionary,
                 dirtyInputs = cache.dirtyInputs.associateBy { input -> input.itemId },
                 sentHistory = cache.sentHistory,
+                syncedAt = cache.syncedAt,
                 message = it.message
             )
         }
     }
 
-    private fun restoreAnyCache() {
-        val key = preferences.all.keys.firstOrNull { it.startsWith(CACHE_PREFIX) } ?: return
-        val raw = preferences.getString(key, null) ?: return
+    private fun restoreBestCache() {
+        val currentId = _state.value.selectedCount?.id
+        if (currentId != null) {
+            val raw = preferences.getString(cacheKey(currentId), null)
+            if (raw != null) {
+                val cache = runCatching { json.decodeFromString<InventoryLocalCache>(raw) }.getOrNull()
+                if (cache != null) {
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            allItems = cache.items,
+                            janDictionary = cache.janDictionary,
+                            dirtyInputs = cache.dirtyInputs.associateBy { input -> input.itemId },
+                            sentHistory = cache.sentHistory,
+                            syncedAt = cache.syncedAt,
+                            message = null
+                        )
+                    }
+                    return
+                }
+            }
+        }
+
+        val cacheKeys = preferences.all.keys.filter { it.startsWith(CACHE_PREFIX) }
+        if (cacheKeys.isEmpty()) return
+
+        val bestKey = cacheKeys.maxByOrNull { key ->
+            val raw = preferences.getString(key, null) ?: return@maxByOrNull Long.MIN_VALUE
+            val cache = runCatching { json.decodeFromString<InventoryLocalCache>(raw) }.getOrNull()
+                ?: return@maxByOrNull Long.MIN_VALUE
+            val hasDirty = if (cache.dirtyInputs.isNotEmpty()) 1_000_000_000_000L else 0L
+            hasDirty + (cache.syncedAt ?: 0L)
+        } ?: return
+
+        val raw = preferences.getString(bestKey, null) ?: return
         val cache = runCatching { json.decodeFromString<InventoryLocalCache>(raw) }.getOrNull() ?: return
+
+        val offlineCount = InventoryCountResponse(
+            id = cache.countId,
+            countNo = cache.countNo,
+            warehouseId = 0,
+            status = "IN_PROGRESS",
+            currentRound = cache.dirtyInputs.firstOrNull()?.countRound ?: 1,
+            totalItems = cache.items.size
+        )
         _state.update {
             it.copy(
                 loading = false,
+                selectedCount = offlineCount,
+                countRound = offlineCount.currentRound,
                 allItems = cache.items,
                 janDictionary = cache.janDictionary,
                 dirtyInputs = cache.dirtyInputs.associateBy { input -> input.itemId },
                 sentHistory = cache.sentHistory,
-                message = null
+                syncedAt = cache.syncedAt,
+                message = "オフラインキャッシュから復元しました（${cache.countNo}）"
             )
         }
     }
@@ -636,7 +686,8 @@ class InventoryCountViewModel @Inject constructor(
             items = state.allItems,
             janDictionary = state.janDictionary,
             dirtyInputs = state.dirtyInputs.values.toList(),
-            sentHistory = state.sentHistory
+            sentHistory = state.sentHistory,
+            syncedAt = state.syncedAt
         )
         val encoded = json.encodeToString(cache)
         preferences.edit(commit = false) {
@@ -694,6 +745,33 @@ class InventoryCountViewModel @Inject constructor(
         return entries.firstOrNull { it.itemId == item.itemId }?.packageQuantity
     }
 
+    private fun normalizeQuantityInput(value: String): String {
+        var hasMinus = false
+        val digits = StringBuilder()
+
+        for (char in value) {
+            when {
+                char.isDigit() -> digits.append(char)
+                char.isInventoryMinusSign() && !hasMinus && digits.isEmpty() -> hasMinus = true
+            }
+        }
+
+        return if (hasMinus) "-$digits" else digits.toString()
+    }
+
+    private fun toggleQuantitySign(value: String): String {
+        val normalized = normalizeQuantityInput(value)
+
+        return when {
+            normalized.startsWith("-") -> normalized.drop(1)
+            normalized.isBlank() -> "-"
+            else -> "-$normalized"
+        }
+    }
+
+    private fun Char.isInventoryMinusSign(): Boolean =
+        this == '-' || this == 'ー' || this == '－' || this == '−' || this == '―' || this == '–' || this == '—'
+
     private fun normalize(value: String): String =
         value.map {
             when (it) {
@@ -705,6 +783,31 @@ class InventoryCountViewModel @Inject constructor(
         }.joinToString("").lowercase()
 
     private fun roundLabel(round: Int): String = if (round == 3) "最終" else "${round}回目"
+
+    private fun remapDirtyInputs(
+        dirtyInputs: Map<Int, LocalInventoryInput>,
+        newItems: List<InventoryCountItemResponse>
+    ): Map<Int, LocalInventoryInput> {
+        if (dirtyInputs.isEmpty()) return dirtyInputs
+        val newItemIds = newItems.map { it.id }.toSet()
+        val allValid = dirtyInputs.keys.all { it in newItemIds }
+        if (allValid) return dirtyInputs
+
+        val codeToNewItem = newItems.associateBy { it.itemCode }
+        val remapped = mutableMapOf<Int, LocalInventoryInput>()
+        for ((_, input) in dirtyInputs) {
+            val newItem = codeToNewItem[input.itemCode]
+            if (newItem != null) {
+                remapped[newItem.id] = input.copy(itemId = newItem.id)
+            } else {
+                Log.w("InventoryCount", "Remap: no match for itemCode=${input.itemCode}, dropping input")
+            }
+        }
+        if (remapped.isNotEmpty()) {
+            Log.i("InventoryCount", "Remapped ${remapped.size}/${dirtyInputs.size} dirtyInputs to new itemIds")
+        }
+        return remapped
+    }
 
     private fun cacheKey(countId: Int): String = "$CACHE_PREFIX$countId"
 

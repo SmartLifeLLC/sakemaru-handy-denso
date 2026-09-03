@@ -1,5 +1,21 @@
 package biz.smt_life.android.sakemaru_handy_denso.inventory
 
+import android.content.Context
+import android.graphics.Typeface
+import android.graphics.Color as AndroidColor
+import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.KeyEvent as AndroidKeyEvent
+import android.view.MotionEvent
+import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,14 +35,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,7 +52,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,6 +59,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,20 +67,26 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import biz.smt_life.android.core.designsystem.util.SoundUtils
+import biz.smt_life.android.core.ui.HardwareKeyHandler
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private val inventorySyncTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd HH:mm")
+
+private enum class InventoryQuantityInputTarget { CASE, PIECE }
 
 @Composable
 fun InventoryCountScreen(
@@ -76,6 +95,119 @@ fun InventoryCountScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
+    var showResetDialog by remember { mutableStateOf(false) }
+    var lastF2BackAt by remember { mutableStateOf(0L) }
+    var quantityInputTarget by remember { mutableStateOf(InventoryQuantityInputTarget.PIECE) }
+
+    fun handleHardwareKey(keyCode: Int): Boolean {
+        return when (keyCode) {
+            AndroidKeyEvent.KEYCODE_F1 -> {
+                if (state.selectedItem == null) {
+                    false
+                } else {
+                    SoundUtils.playTick()
+                    when (quantityInputTarget) {
+                        InventoryQuantityInputTarget.CASE -> viewModel.toggleCaseQuantitySign()
+                        InventoryQuantityInputTarget.PIECE -> viewModel.togglePieceQuantitySign()
+                    }
+                    true
+                }
+            }
+            AndroidKeyEvent.KEYCODE_F2 -> {
+                if (state.selectedTab == InventoryTab.SCAN && state.selectedItem == null && state.hasLocalData) {
+                    return true
+                }
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastF2BackAt < 500L) {
+                    return true
+                }
+                lastF2BackAt = now
+                SoundUtils.playTick()
+                when {
+                    state.selectedItem != null -> viewModel.clearSelection()
+                    state.selectedTab == InventoryTab.HISTORY -> viewModel.selectTab(InventoryTab.SCAN)
+                    state.selectedTab != InventoryTab.MENU && state.hasInstruction -> viewModel.selectTab(InventoryTab.MENU)
+                    else -> onNavigateBack()
+                }
+                true
+            }
+            AndroidKeyEvent.KEYCODE_F3 -> {
+                if (state.selectedItem != null) {
+                    viewModel.confirmInput()
+                } else {
+                    SoundUtils.playTick()
+                    viewModel.loadInstructions()
+                }
+                true
+            }
+            AndroidKeyEvent.KEYCODE_F4 -> {
+                SoundUtils.playTick()
+                if (state.selectedTab == InventoryTab.SCAN && state.selectedItem == null) {
+                    viewModel.selectTab(InventoryTab.HISTORY)
+                } else {
+                    viewModel.finishRound()
+                }
+                true
+            }
+            AndroidKeyEvent.KEYCODE_1,
+            AndroidKeyEvent.KEYCODE_NUMPAD_1 -> {
+                if (state.selectedTab == InventoryTab.MENU && state.hasInstruction && state.selectedItem == null) {
+                    SoundUtils.playTick()
+                    viewModel.selectTab(InventoryTab.SCAN)
+                    true
+                } else {
+                    false
+                }
+            }
+            AndroidKeyEvent.KEYCODE_2,
+            AndroidKeyEvent.KEYCODE_NUMPAD_2 -> {
+                if (state.selectedTab == InventoryTab.MENU && state.hasInstruction && state.selectedItem == null) {
+                    SoundUtils.playTick()
+                    viewModel.selectTab(InventoryTab.HISTORY)
+                    true
+                } else {
+                    false
+                }
+            }
+            AndroidKeyEvent.KEYCODE_3,
+            AndroidKeyEvent.KEYCODE_NUMPAD_3 -> {
+                if (state.selectedTab == InventoryTab.MENU && state.hasInstruction && state.selectedItem == null) {
+                    if (!state.syncing) {
+                        SoundUtils.playTick()
+                        viewModel.syncAllItems()
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            AndroidKeyEvent.KEYCODE_4,
+            AndroidKeyEvent.KEYCODE_NUMPAD_4 -> {
+                if (state.selectedTab == InventoryTab.MENU && state.hasInstruction && state.selectedItem == null) {
+                    if (!state.syncing) {
+                        SoundUtils.playTick()
+                        showResetDialog = true
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            else -> false
+        }
+    }
+
+    HardwareKeyHandler { keyCode, _ -> handleHardwareKey(keyCode) }
+
+    if (showResetDialog) {
+        ResetConfirmDialog(
+            onConfirm = {
+                showResetDialog = false
+                viewModel.resetLocalData()
+            },
+            onDismiss = { showResetDialog = false }
+        )
+    }
 
     LaunchedEffect(state.selectedTab) {
         if (state.selectedTab != InventoryTab.SCAN) {
@@ -92,48 +224,14 @@ fun InventoryCountScreen(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
-                    Key.F2 -> {
-                        SoundUtils.playTick()
-                        when {
-                            state.selectedItem != null -> viewModel.clearSelection()
-                            state.selectedTab == InventoryTab.HISTORY -> viewModel.selectTab(InventoryTab.SCAN)
-                            state.selectedTab != InventoryTab.MENU && state.hasInstruction -> viewModel.selectTab(InventoryTab.MENU)
-                            else -> onNavigateBack()
-                        }
-                        true
-                    }
-                    Key.F3 -> {
-                        if (state.selectedItem != null) {
-                            viewModel.confirmInput()
-                        } else {
-                            SoundUtils.playTick()
-                            viewModel.loadInstructions()
-                        }
-                        true
-                    }
-                    Key.F4 -> {
-                        SoundUtils.playTick()
-                        if (state.selectedTab == InventoryTab.SCAN && state.selectedItem == null) {
-                            viewModel.selectTab(InventoryTab.HISTORY)
-                        } else {
-                            viewModel.finishRound()
-                        }
-                        true
-                    }
-                    Key.One, Key.NumPad1 -> {
-                        if (state.selectedTab == InventoryTab.MENU && state.hasInstruction && state.selectedItem == null) {
-                            SoundUtils.playTick()
-                            viewModel.selectTab(InventoryTab.SCAN)
-                            true
-                        } else false
-                    }
-                    Key.Two, Key.NumPad2 -> {
-                        if (state.selectedTab == InventoryTab.MENU && state.hasInstruction && state.selectedItem == null) {
-                            SoundUtils.playTick()
-                            viewModel.selectTab(InventoryTab.HISTORY)
-                            true
-                        } else false
-                    }
+                    Key.F2 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_F2)
+                    Key.F1 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_F1)
+                    Key.F3 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_F3)
+                    Key.F4 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_F4)
+                    Key.One, Key.NumPad1 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_1)
+                    Key.Two, Key.NumPad2 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_2)
+                    Key.Three, Key.NumPad3 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_3)
+                    Key.Four, Key.NumPad4 -> handleHardwareKey(AndroidKeyEvent.KEYCODE_4)
                     else -> false
                 }
             }
@@ -155,9 +253,19 @@ fun InventoryCountScreen(
         } else if (!state.hasInstruction) {
             InstructionCheckPanel(state, viewModel, modifier = Modifier.weight(1f))
         } else if (state.selectedItem != null) {
-            ItemInputPanel(state, viewModel, modifier = Modifier.weight(1f))
+            ItemInputPanel(
+                state = state,
+                viewModel = viewModel,
+                onQuantityInputFocused = { quantityInputTarget = it },
+                modifier = Modifier.weight(1f)
+            )
         } else when (state.selectedTab) {
-            InventoryTab.MENU -> InventoryMenuPanel(viewModel, modifier = Modifier.weight(1f))
+            InventoryTab.MENU -> InventoryMenuPanel(
+                state,
+                viewModel,
+                onRequestReset = { showResetDialog = true },
+                modifier = Modifier.weight(1f)
+            )
             InventoryTab.SCAN -> {
                 Box(modifier = Modifier.weight(1f)) { ScanTab(state, viewModel) }
             }
@@ -167,7 +275,12 @@ fun InventoryCountScreen(
             InventoryTab.SETTINGS -> {
                 Box(modifier = Modifier.weight(1f)) { SettingsTab(state, viewModel) }
             }
-            else -> InventoryMenuPanel(viewModel, modifier = Modifier.weight(1f))
+            else -> InventoryMenuPanel(
+                state,
+                viewModel,
+                onRequestReset = { showResetDialog = true },
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -268,10 +381,14 @@ private fun InstructionCheckPanel(
 
 @Composable
 private fun InventoryMenuPanel(
+    state: InventoryCountState,
     viewModel: InventoryCountViewModel,
+    onRequestReset: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(8.dp)
+    val lastSyncText = formatInventorySyncTime(state.syncedAt)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -352,14 +469,84 @@ private fun InventoryMenuPanel(
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        OutlinedButton(
-            onClick = { SoundUtils.playTick(); viewModel.selectTab(InventoryTab.SETTINGS) },
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.height(36.dp)
-        ) {
-            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Gray)
-            Spacer(modifier = Modifier.width(4.dp))
-            Text("設定", fontSize = 13.sp, color = Color.Gray)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Surface(
+                onClick = {
+                    if (!state.syncing) {
+                        SoundUtils.playTick()
+                        viewModel.syncAllItems()
+                    }
+                },
+                modifier = Modifier
+                    .width(140.dp)
+                    .aspectRatio(1f)
+                    .border(1.dp, Color.LightGray, shape),
+                color = Color.White,
+                shadowElevation = 2.dp,
+                shape = shape
+            ) {
+                Column {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .background(Color(0xFFFF9800))
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        if (state.syncing) {
+                            CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 3.dp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("取得中...", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        } else {
+                            Text("(3)データ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            Text("同期", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(lastSyncText, fontSize = 12.sp, color = Color.DarkGray)
+                    }
+                }
+            }
+            Surface(
+                onClick = {
+                    if (!state.syncing) {
+                        SoundUtils.playTick()
+                        onRequestReset()
+                    }
+                },
+                modifier = Modifier
+                    .width(140.dp)
+                    .aspectRatio(1f)
+                    .border(1.dp, Color.Red, shape),
+                color = Color.White,
+                shadowElevation = 2.dp,
+                shape = shape
+            ) {
+                Column {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .background(Color.Red)
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("(4)棚卸し", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Red)
+                        Text("初期化", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Red)
+                        Text("確認あり", fontSize = 13.sp, color = Color.DarkGray)
+                    }
+                }
+            }
         }
     }
 }
@@ -427,10 +614,27 @@ private fun SettingsTab(state: InventoryCountState, viewModel: InventoryCountVie
 @Composable
 private fun ScanTab(state: InventoryCountState, viewModel: InventoryCountViewModel) {
     val scanFocusRequester = remember { FocusRequester() }
+    var scanEditText by remember { mutableStateOf<EditText?>(null) }
+
+    fun refocusScanInput() {
+        scanEditText?.post {
+            scanEditText?.setShowSoftInputOnFocus(false)
+            scanEditText?.requestFocus()
+            scanEditText?.setSelection(scanEditText?.text?.length ?: 0)
+            scanEditText?.let { hideSoftwareKeyboard(it) }
+        }
+    }
 
     LaunchedEffect(state.hasLocalData) {
         if (state.hasLocalData) {
             scanFocusRequester.requestFocus()
+            refocusScanInput()
+        }
+    }
+
+    LaunchedEffect(state.error, state.message, state.selectedItem, scanEditText) {
+        if (state.hasLocalData && state.selectedItem == null) {
+            refocusScanInput()
         }
     }
 
@@ -458,58 +662,31 @@ private fun ScanTab(state: InventoryCountState, viewModel: InventoryCountViewMod
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OutlinedTextField(
+        InventoryNumericEditText(
             value = state.keyword,
             onValueChange = viewModel::setKeyword,
-            label = { Text("商品コード / JAN / バーコード") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                imeAction = ImeAction.Search
-            ),
-            keyboardActions = KeyboardActions(
-                onSearch = {
-                    SoundUtils.playBeep()
-                    viewModel.scan()
-                }
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(scanFocusRequester)
-                .onPreviewKeyEvent { event ->
-                    if (event.key == Key.Enter && event.type == KeyEventType.KeyDown) {
-                        SoundUtils.playBeep()
-                        viewModel.scan()
-                        true
-                    } else {
-                        false
-                    }
-                }
+            label = "商品コード / JAN / バーコード",
+            placeholder = "商品コード / JAN / バーコード",
+            focusRequester = scanFocusRequester,
+            isFocusTarget = true,
+            selectAllOnFocus = false,
+            textSizeSp = 20f,
+            onEnter = {
+                SoundUtils.playBeep()
+                viewModel.scan()
+                refocusScanInput()
+                true
+            },
+            onEditTextReady = { scanEditText = it },
+            modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.weight(1f))
-
-        Icon(
-            Icons.Default.CameraAlt,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp),
-            tint = Color(0xFF1976D2)
-        )
         Spacer(modifier = Modifier.height(8.dp))
-        Text("商品をスキャンしてください", fontSize = 20.sp, color = Color.DarkGray)
-
-        state.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 18.sp, modifier = Modifier.padding(top = 12.dp))
-        }
-        state.message?.let {
-            Text(it, color = Color(0xFF2E7D32), fontSize = 18.sp, modifier = Modifier.padding(top = 12.dp))
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = { SoundUtils.playTick(); viewModel.selectTab(InventoryTab.HISTORY) },
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth(0.6f).height(56.dp)
+            modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
             Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(24.dp))
             Spacer(modifier = Modifier.width(8.dp))
@@ -529,6 +706,32 @@ private fun ScanTab(state: InventoryCountState, viewModel: InventoryCountViewMod
         }
 
         Spacer(modifier = Modifier.weight(1f))
+
+        Icon(
+            Icons.Default.CameraAlt,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = Color(0xFF1976D2)
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = { SoundUtils.playTick(); viewModel.selectTab(InventoryTab.MENU) },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp)
+        ) {
+            Text("戻る", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("商品をスキャンしてください", fontSize = 20.sp, color = Color.DarkGray)
+
+        state.error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 18.sp, modifier = Modifier.padding(top = 12.dp))
+        }
+        state.message?.let {
+            Text(it, color = Color(0xFF2E7D32), fontSize = 18.sp, modifier = Modifier.padding(top = 12.dp))
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
 
@@ -538,6 +741,7 @@ private fun ScanTab(state: InventoryCountState, viewModel: InventoryCountViewMod
 private fun ItemInputPanel(
     state: InventoryCountState,
     viewModel: InventoryCountViewModel,
+    onQuantityInputFocused: (InventoryQuantityInputTarget) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val item = state.selectedItem ?: return
@@ -565,73 +769,105 @@ private fun ItemInputPanel(
 
         // Input fields
         val caseEnabled = state.capacityCase > 1
+        val availableTotalPieces = item.systemTotalPieceQuantity
+            .takeIf { it != 0 }
+            ?: item.systemQuantity
+        val availableCaseQuantity = if (caseEnabled) availableTotalPieces / state.capacityCase else 0
+        val availablePieceQuantity = if (caseEnabled) availableTotalPieces % state.capacityCase else availableTotalPieces
         val caseFocus = remember { FocusRequester() }
         val pieceFocus = remember { FocusRequester() }
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFE3F2FD), RoundedCornerShape(6.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("現在庫（available）", fontSize = 14.sp, color = Color(0xFF1976D2))
+                Text(
+                    "ケース $availableCaseQuantity | バラ $availablePieceQuantity",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("総バラ", fontSize = 14.sp, color = Color(0xFF1976D2))
+                Text(
+                    "$availableTotalPieces",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF1976D2)
+                )
+            }
+        }
+
         LaunchedEffect(item.id) {
             when {
-                state.scanQuantityType == "CASE" && caseEnabled -> caseFocus.requestFocus()
-                !caseEnabled -> pieceFocus.requestFocus()
-                else -> pieceFocus.requestFocus()
+                state.scanQuantityType == "CASE" && caseEnabled -> {
+                    onQuantityInputFocused(InventoryQuantityInputTarget.CASE)
+                    caseFocus.requestFocus()
+                }
+                else -> {
+                    onQuantityInputFocused(InventoryQuantityInputTarget.PIECE)
+                    pieceFocus.requestFocus()
+                }
             }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
+            InventoryNumericEditText(
                 value = state.caseQuantity,
                 onValueChange = {
                     viewModel.setCaseQuantity(it)
                     if (it != state.caseQuantity) SoundUtils.playTick()
                 },
-                label = { Text("ケース", fontSize = 14.sp) },
+                label = "ケース",
                 enabled = caseEnabled,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.None
-                ),
-                singleLine = true,
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 24.sp),
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(caseFocus)
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when (event.key) {
-                            Key.DirectionRight -> { pieceFocus.requestFocus(); true }
-                            Key.DirectionDown -> { pieceFocus.requestFocus(); true }
-                            else -> false
-                        }
-                    }
+                focusRequester = caseFocus,
+                isFocusTarget = state.scanQuantityType == "CASE" && caseEnabled,
+                textSizeSp = 24f,
+                textBold = true,
+                allowNegative = true,
+                onFocused = { onQuantityInputFocused(InventoryQuantityInputTarget.CASE) },
+                onToggleNegative = viewModel::toggleCaseQuantitySign,
+                onMoveNext = {
+                    pieceFocus.requestFocus()
+                    true
+                },
+                modifier = Modifier.weight(1f)
             )
-            OutlinedTextField(
+            InventoryNumericEditText(
                 value = state.pieceQuantity,
                 onValueChange = {
                     viewModel.setPieceQuantity(it)
                     if (it != state.pieceQuantity) SoundUtils.playTick()
                 },
-                label = { Text("バラ", fontSize = 14.sp) },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.None
-                ),
-                singleLine = true,
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 24.sp),
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(pieceFocus)
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when (event.key) {
-                            Key.DirectionLeft -> { caseFocus.requestFocus(); true }
-                            Key.DirectionUp -> { caseFocus.requestFocus(); true }
-                            else -> false
-                        }
+                label = "バラ",
+                focusRequester = pieceFocus,
+                isFocusTarget = state.scanQuantityType != "CASE" || !caseEnabled,
+                textSizeSp = 24f,
+                textBold = true,
+                allowNegative = true,
+                onFocused = { onQuantityInputFocused(InventoryQuantityInputTarget.PIECE) },
+                onToggleNegative = viewModel::togglePieceQuantitySign,
+                onMovePrevious = {
+                    if (caseEnabled) {
+                        caseFocus.requestFocus()
+                        true
+                    } else {
+                        false
                     }
+                },
+                modifier = Modifier.weight(1f)
             )
         }
 
         // 入力済み総バラ
-        if (state.previousTotalPieces > 0) {
+        if (state.previousTotalPieces != 0) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -656,7 +892,6 @@ private fun ItemInputPanel(
             Text("今回 総バラ", fontSize = 16.sp, color = Color.Gray)
             Text("${state.currentInputPieces}", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.Black)
         }
-
         // Buttons
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(
@@ -667,13 +902,282 @@ private fun ItemInputPanel(
             }
             Button(
                 onClick = { viewModel.confirmInput() },
-                enabled = state.caseQuantity.isNotBlank() || state.pieceQuantity.isNotBlank(),
+                enabled = state.caseQuantity.toIntOrNull() != null || state.pieceQuantity.toIntOrNull() != null,
                 modifier = Modifier.weight(1f).height(64.dp)
             ) {
                 Text("(F3)確定", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
+}
+
+@Composable
+private fun InventoryNumericEditText(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: String? = null,
+    enabled: Boolean = true,
+    focusRequester: FocusRequester,
+    isFocusTarget: Boolean,
+    selectAllOnFocus: Boolean = true,
+    textSizeSp: Float = 20f,
+    textBold: Boolean = false,
+    allowNegative: Boolean = false,
+    onFocused: (() -> Unit)? = null,
+    onToggleNegative: (() -> Unit)? = null,
+    onEnter: (() -> Boolean)? = null,
+    onMovePrevious: (() -> Boolean)? = null,
+    onMoveNext: (() -> Boolean)? = null,
+    onEditTextReady: ((EditText) -> Unit)? = null
+) {
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+    val currentOnEnter by rememberUpdatedState(onEnter)
+    val currentOnMovePrevious by rememberUpdatedState(onMovePrevious)
+    val currentOnMoveNext by rememberUpdatedState(onMoveNext)
+    val currentOnEditTextReady by rememberUpdatedState(onEditTextReady)
+    val currentOnFocused by rememberUpdatedState(onFocused)
+    val currentOnToggleNegative by rememberUpdatedState(onToggleNegative)
+    val currentValue by rememberUpdatedState(value)
+    val currentEnabled by rememberUpdatedState(enabled)
+
+    Column(modifier = modifier) {
+        label?.let {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = it,
+                    fontSize = 14.sp,
+                    color = Color.DarkGray
+                )
+                if (allowNegative) {
+                    Text(
+                        text = "F1(-)入力",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFE65100)
+                    )
+                }
+            }
+        }
+
+        AndroidView(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .focusRequester(focusRequester),
+            factory = { context ->
+                EditText(context).apply {
+                    applyInventoryNumericInputSettings(textSizeSp, textBold, allowNegative)
+                    isEnabled = enabled
+                    hint = placeholder.orEmpty()
+                    setText(normalizeInventoryNumericInput(value, allowNegative))
+                    setSelection(text.length)
+                    addTextChangedListener(object : TextWatcher {
+                        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+                        override fun afterTextChanged(s: Editable?) {
+                            if (tag == true) return
+
+                            val raw = s?.toString().orEmpty()
+                            val normalized = normalizeInventoryNumericInput(raw, allowNegative)
+                            if (raw != normalized) {
+                                tag = true
+                                setText(normalized)
+                                setSelection(normalized.length)
+                                tag = false
+                                return
+                            }
+                            if (normalized != currentValue) {
+                                currentOnValueChange(normalized)
+                            }
+                        }
+                    })
+                    setOnFocusChangeListener { _, hasFocus ->
+                        setShowSoftInputOnFocus(false)
+                        if (hasFocus) {
+                            currentOnFocused?.invoke()
+                            post {
+                                applyInventorySelection(selectAllOnFocus)
+                                hideSoftwareKeyboard(this)
+                            }
+                        }
+                    }
+                    setOnTouchListener { _, event ->
+                        if (event.action == MotionEvent.ACTION_UP && currentEnabled) {
+                            performClick()
+                            setShowSoftInputOnFocus(false)
+                            requestFocus()
+                            post {
+                                applyInventorySelection(selectAllOnFocus)
+                                hideSoftwareKeyboard(this)
+                            }
+                        }
+                        true
+                    }
+                    setOnEditorActionListener { _, actionId, event ->
+                        val enterHandler = currentOnEnter ?: return@setOnEditorActionListener false
+                        val isEnter = event != null &&
+                            (event.keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
+                                event.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER)
+                        if (actionId == EditorInfo.IME_ACTION_SEARCH || isEnter) {
+                            if (event == null || event.action == AndroidKeyEvent.ACTION_DOWN) {
+                                enterHandler()
+                            } else {
+                                true
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                    setOnKeyListener { _, keyCode, event ->
+                        if (event.action != AndroidKeyEvent.ACTION_DOWN) {
+                            return@setOnKeyListener false
+                        }
+                        when (keyCode) {
+                            AndroidKeyEvent.KEYCODE_F1 -> {
+                                if (allowNegative) {
+                                    currentOnToggleNegative?.invoke()
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            AndroidKeyEvent.KEYCODE_ENTER,
+                            AndroidKeyEvent.KEYCODE_NUMPAD_ENTER,
+                            AndroidKeyEvent.KEYCODE_DPAD_CENTER -> currentOnEnter?.invoke() ?: false
+                            AndroidKeyEvent.KEYCODE_DPAD_DOWN,
+                            AndroidKeyEvent.KEYCODE_DPAD_RIGHT,
+                            AndroidKeyEvent.KEYCODE_NAVIGATE_NEXT,
+                            AndroidKeyEvent.KEYCODE_TAB -> currentOnMoveNext?.invoke() ?: false
+                            AndroidKeyEvent.KEYCODE_DPAD_UP,
+                            AndroidKeyEvent.KEYCODE_DPAD_LEFT,
+                            AndroidKeyEvent.KEYCODE_NAVIGATE_PREVIOUS -> currentOnMovePrevious?.invoke() ?: false
+                            else -> false
+                        }
+                    }
+                    post {
+                        setShowSoftInputOnFocus(false)
+                        if (isFocusTarget && enabled) {
+                            requestFocus()
+                            hideSoftwareKeyboard(this)
+                        }
+                    }
+                    currentOnEditTextReady?.invoke(this)
+                }
+            },
+            update = { editText ->
+                val normalizedValue = normalizeInventoryNumericInput(value, allowNegative)
+                editText.setShowSoftInputOnFocus(false)
+                editText.isEnabled = enabled
+                editText.hint = placeholder.orEmpty()
+                editText.inputType = inventoryInputType(allowNegative)
+                editText.imeOptions = EditorInfo.IME_ACTION_NONE
+                editText.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+                editText.setTypeface(Typeface.MONOSPACE, if (textBold) Typeface.BOLD else Typeface.NORMAL)
+                editText.background = createInventoryEditTextBackground(
+                    backgroundColor = if (enabled) AndroidColor.WHITE else AndroidColor.rgb(245, 245, 245),
+                    borderColor = AndroidColor.rgb(158, 158, 158)
+                )
+                if (editText.text.toString() != normalizedValue) {
+                    editText.tag = true
+                    editText.setText(normalizedValue)
+                    editText.applyInventorySelection(editText.hasFocus() && selectAllOnFocus)
+                    editText.tag = false
+                }
+                if (isFocusTarget && enabled && !editText.hasFocus()) {
+                    editText.requestFocus()
+                    editText.post {
+                        editText.setShowSoftInputOnFocus(false)
+                        editText.applyInventorySelection(selectAllOnFocus)
+                        hideSoftwareKeyboard(editText)
+                    }
+                } else if (editText.hasFocus()) {
+                    editText.post { hideSoftwareKeyboard(editText) }
+                }
+            }
+        )
+    }
+}
+
+private fun EditText.applyInventoryNumericInputSettings(textSizeSp: Float, textBold: Boolean, allowNegative: Boolean) {
+    inputType = inventoryInputType(allowNegative)
+    imeOptions = EditorInfo.IME_ACTION_NONE
+    gravity = Gravity.CENTER_VERTICAL
+    isSingleLine = true
+    setSelectAllOnFocus(true)
+    setShowSoftInputOnFocus(false)
+    isFocusable = true
+    isFocusableInTouchMode = true
+    isCursorVisible = true
+    setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+    setTypeface(Typeface.MONOSPACE, if (textBold) Typeface.BOLD else Typeface.NORMAL)
+    setPadding(16, 0, 16, 0)
+    background = createInventoryEditTextBackground(
+        backgroundColor = AndroidColor.WHITE,
+        borderColor = AndroidColor.rgb(158, 158, 158)
+    )
+}
+
+private fun EditText.applyInventorySelection(selectAllOnFocus: Boolean) {
+    val currentText = text?.toString().orEmpty()
+    if (selectAllOnFocus && !currentText.startsWith("-")) {
+        selectAll()
+    } else {
+        setSelection(currentText.length)
+    }
+}
+
+private fun inventoryInputType(allowNegative: Boolean): Int =
+    InputType.TYPE_CLASS_NUMBER or (if (allowNegative) InputType.TYPE_NUMBER_FLAG_SIGNED else 0)
+
+private fun normalizeInventoryNumericInput(value: String, allowNegative: Boolean = false): String {
+    if (!allowNegative) return value.filter { it.isDigit() }
+
+    var hasMinus = false
+    val digits = StringBuilder()
+    for (char in value) {
+        when {
+            char.isDigit() -> digits.append(char)
+            char.isInventoryMinusSign() && !hasMinus && digits.isEmpty() -> hasMinus = true
+        }
+    }
+
+    return if (hasMinus) "-$digits" else digits.toString()
+}
+
+private fun Char.isInventoryMinusSign(): Boolean =
+    this == '-' || this == 'ー' || this == '－' || this == '−' || this == '―' || this == '–' || this == '—'
+
+private fun createInventoryEditTextBackground(
+    backgroundColor: Int,
+    borderColor: Int
+): GradientDrawable =
+    GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        setColor(backgroundColor)
+        setStroke(2, borderColor)
+        cornerRadius = 0f
+    }
+
+private fun hideSoftwareKeyboard(view: View) {
+    val inputMethodManager = view.context
+        .getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+    inputMethodManager?.hideSoftInputFromWindow(view.windowToken, 0)
+}
+
+private fun formatInventorySyncTime(syncedAt: Long?): String {
+    val validSyncedAt = syncedAt?.takeIf { it > 0 } ?: return "最終 --"
+    return "最終 " + Instant.ofEpochMilli(validSyncedAt)
+        .atZone(ZoneId.systemDefault())
+        .format(inventorySyncTimeFormatter)
 }
 
 private fun displayVolumeUnit(label: String?, rawUnit: String?): String =
@@ -776,6 +1280,30 @@ private fun HistoryTab(state: InventoryCountState, viewModel: InventoryCountView
                 items(state.sentHistory, key = { "sent_${it.requestUuid}" }) { input ->
                     HistoryCard(input, onClick = { selectedHistoryItem = input })
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { SoundUtils.playTick(); viewModel.selectTab(InventoryTab.SCAN) },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).height(56.dp)
+            ) {
+                Text("(F2)戻る", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+            Button(
+                onClick = { SoundUtils.playTick(); viewModel.finishRound() },
+                enabled = dirtyList.isNotEmpty() && !state.submitting,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).height(56.dp)
+            ) {
+                Text(
+                    if (state.submitting) "送信中..."
+                    else "(F4)送信",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

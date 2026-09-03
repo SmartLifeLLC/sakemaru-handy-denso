@@ -43,6 +43,7 @@ import biz.smt_life.android.feature.outbound.inspection.OutboundInspectionScanSc
 import biz.smt_life.android.feature.outbound.inspection.OutboundInspectionViewModel
 import biz.smt_life.android.feature.settings.SettingsScreen
 import biz.smt_life.android.sakemaru_handy_denso.inventory.InventoryCountScreen
+import biz.smt_life.android.sakemaru_handy_denso.warehousetransfer.WarehouseTransferScreen
 
 @Composable
 fun HandyNavHost(
@@ -57,9 +58,19 @@ fun HandyNavHost(
     }
 
     fun popBackTo(route: String) {
+        if (navController.currentDestination?.route == route) return
         if (!navController.popBackStack(route, inclusive = false)) {
             navigateSingleTop(route)
         }
+    }
+
+    @Composable
+    fun rememberIncomingViewModel(backStackEntry: androidx.navigation.NavBackStackEntry): IncomingViewModel {
+        val parentEntry = remember(backStackEntry) {
+            navController.getBackStackEntry(Routes.Main.route)
+        }
+
+        return hiltViewModel(parentEntry)
     }
 
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
@@ -67,12 +78,24 @@ fun HandyNavHost(
 
     BackHandler(
         enabled = currentRoute == Routes.Main.route ||
+            currentRoute == Routes.IncomingWarehouseSelection.route ||
+            currentRoute == Routes.IncomingProductList.route ||
+            currentRoute == Routes.IncomingScheduleList.route ||
+            currentRoute == Routes.IncomingInput.route ||
+            currentRoute == Routes.IncomingHistory.route ||
+            currentRoute == Routes.Inventory.route ||
             currentRoute == Routes.OutboundInspectionPeriod.route ||
             currentRoute == Routes.OutboundInspectionCourse.route ||
             currentRoute == Routes.OutboundInspectionFloor.route ||
             currentRoute == Routes.OutboundInspectionScan.route
     ) {
         when (currentRoute) {
+            Routes.IncomingWarehouseSelection.route -> popBackTo(Routes.Main.route)
+            Routes.IncomingProductList.route -> popBackTo(Routes.Main.route)
+            Routes.IncomingScheduleList.route -> popBackTo(Routes.IncomingProductList.route)
+            Routes.IncomingInput.route -> popBackTo(Routes.IncomingScheduleList.route)
+            Routes.IncomingHistory.route -> popBackTo(Routes.IncomingProductList.route)
+            Routes.Inventory.route -> popBackTo(Routes.Main.route)
             Routes.OutboundInspectionPeriod.route -> popBackTo(Routes.Main.route)
             Routes.OutboundInspectionCourse.route -> popBackTo(Routes.OutboundInspectionPeriod.route)
             Routes.OutboundInspectionFloor.route -> popBackTo(Routes.OutboundInspectionCourse.route)
@@ -154,16 +177,10 @@ fun HandyNavHost(
 
         // Native Incoming routes (入庫処理)
         composable(Routes.IncomingWarehouseSelection.route) { backStackEntry ->
-            // Scoped ViewModel for all incoming screens
-            val parentEntry = remember(backStackEntry) {
-                navController.getBackStackEntry(Routes.IncomingWarehouseSelection.route)
-            }
-            val incomingViewModel: IncomingViewModel = hiltViewModel(parentEntry)
+            val incomingViewModel = rememberIncomingViewModel(backStackEntry)
 
             WarehouseSelectionScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
+                onNavigateBack = { popBackTo(Routes.Main.route) },
                 onWarehouseSelected = {
                     navController.navigate(Routes.IncomingProductList.route)
                 },
@@ -177,13 +194,10 @@ fun HandyNavHost(
         }
 
         composable(Routes.IncomingProductList.route) { backStackEntry ->
-            val incomingViewModel: IncomingViewModel = hiltViewModel(backStackEntry)
+            val incomingViewModel = rememberIncomingViewModel(backStackEntry)
 
             ProductListScreen(
-                onNavigateBack = {
-                    incomingViewModel.resetToWarehouseSelection()
-                    navController.popBackStack()
-                },
+                onNavigateBack = { popBackTo(Routes.Main.route) },
                 onProductSelected = {
                     navController.navigate(Routes.IncomingScheduleList.route)
                 },
@@ -195,15 +209,10 @@ fun HandyNavHost(
         }
 
         composable(Routes.IncomingScheduleList.route) { backStackEntry ->
-            val parentEntry = remember(backStackEntry) {
-                navController.getBackStackEntry(Routes.IncomingProductList.route)
-            }
-            val incomingViewModel: IncomingViewModel = hiltViewModel(parentEntry)
+            val incomingViewModel = rememberIncomingViewModel(backStackEntry)
 
             ScheduleListScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
+                onNavigateBack = { popBackTo(Routes.IncomingProductList.route) },
                 onScheduleSelected = {
                     navController.navigate(Routes.IncomingInput.route)
                 },
@@ -215,36 +224,28 @@ fun HandyNavHost(
         }
 
         composable(Routes.IncomingInput.route) { backStackEntry ->
-            val parentEntry = remember(backStackEntry) {
-                navController.getBackStackEntry(Routes.IncomingProductList.route)
-            }
-            val incomingViewModel: IncomingViewModel = hiltViewModel(parentEntry)
+            val incomingViewModel = rememberIncomingViewModel(backStackEntry)
 
             IncomingInputScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
-                onSubmitSuccess = {
-                    // After successful submission, go back to schedule list
-                    // The schedule list will show updated data
-                    navController.popBackStack(Routes.IncomingScheduleList.route, inclusive = false)
+                onNavigateBack = { popBackTo(Routes.IncomingScheduleList.route) },
+                onSubmitSuccess = { hasRemainingSameProductSchedules ->
+                    if (hasRemainingSameProductSchedules) {
+                        popBackTo(Routes.IncomingScheduleList.route)
+                    } else {
+                        popBackTo(Routes.IncomingProductList.route)
+                    }
                 },
                 viewModel = incomingViewModel
             )
         }
 
         composable(Routes.IncomingHistory.route) { backStackEntry ->
-            val parentEntry = remember(backStackEntry) {
-                navController.getBackStackEntry(Routes.IncomingProductList.route)
-            }
-            val incomingViewModel: IncomingViewModel = hiltViewModel(parentEntry)
+            val incomingViewModel = rememberIncomingViewModel(backStackEntry)
 
             HistoryScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
+                onNavigateBack = { popBackTo(Routes.IncomingProductList.route) },
                 onNavigateToProductList = {
-                    navController.popBackStack(Routes.IncomingProductList.route, inclusive = false)
+                    popBackTo(Routes.IncomingProductList.route)
                 },
                 onEditWorkItem = {
                     navController.navigate(Routes.IncomingInput.route)
@@ -443,10 +444,18 @@ fun HandyNavHost(
             )
         }
 
+        composable(Routes.Move.route) {
+            WarehouseTransferScreen(
+                onNavigateBack = {
+                    popBackTo(Routes.Main.route)
+                }
+            )
+        }
+
         composable(Routes.Inventory.route) {
             InventoryCountScreen(
                 onNavigateBack = {
-                    navController.popBackStack()
+                    popBackTo(Routes.Main.route)
                 }
             )
         }

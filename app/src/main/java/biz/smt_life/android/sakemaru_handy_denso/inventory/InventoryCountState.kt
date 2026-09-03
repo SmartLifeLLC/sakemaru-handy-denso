@@ -30,6 +30,7 @@ data class InventoryCountState(
     val pieceQuantity: String = "",
     val dirtyInputs: Map<Int, LocalInventoryInput> = emptyMap(),
     val sentHistory: List<LocalInventoryInput> = emptyList(),
+    val syncedAt: Long? = null,
     val message: String? = null,
     val error: String? = null
 ) {
@@ -46,7 +47,7 @@ data class InventoryCountState(
         val sentTotal = sentHistory.filter { it.itemId == itemId }.sumOf { it.totalPieces }
         dirtyTotal + sentTotal
     }
-    val hasInstruction: Boolean = counts.isNotEmpty()
+    val hasInstruction: Boolean = selectedCount != null || counts.isNotEmpty()
     val hasLocalData: Boolean = allItems.isNotEmpty()
     val dirtyCount: Int = dirtyInputs.size
 }
@@ -76,5 +77,5 @@ data class InventoryLocalCache(
     val janDictionary: Map<String, List<JanCodeEntry>> = emptyMap(),
     val dirtyInputs: List<LocalInventoryInput> = emptyList(),
     val sentHistory: List<LocalInventoryInput> = emptyList(),
-    val syncedAt: Long = System.currentTimeMillis()
+    val syncedAt: Long? = null
 )
