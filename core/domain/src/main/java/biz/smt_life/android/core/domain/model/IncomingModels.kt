@@ -78,6 +78,7 @@ data class IncomingProduct(
     val capacityCase: Int? = null,
     val packaging: String? = null,
     val temperatureType: String? = null,
+    val defaultExpirationDate: String? = null,
     val images: List<String> = emptyList(),
     val defaultLocation: Location? = null,
     val totalExpectedQuantity: Int = 0,
@@ -192,6 +193,7 @@ data class IncomingSchedule(
     val quantityType: IncomingQuantityType = IncomingQuantityType.PIECE,
     val expectedArrivalDate: String? = null,
     val expirationDate: String? = null,
+    val defaultExpirationDate: String? = null,
     val status: IncomingScheduleStatus = IncomingScheduleStatus.PENDING,
     val location: Location? = null
 ) {

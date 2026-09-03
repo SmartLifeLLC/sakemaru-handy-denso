@@ -17,8 +17,8 @@ android {
         applicationId = "biz.smt_life.android.sakemaru_handy_denso"
         minSdk = 26
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.4.0"
+        versionCode = 19
+        versionName = "1.5.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

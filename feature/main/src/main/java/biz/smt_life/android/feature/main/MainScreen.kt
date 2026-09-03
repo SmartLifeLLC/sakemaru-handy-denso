@@ -1,5 +1,6 @@
 package biz.smt_life.android.feature.main
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -39,6 +41,7 @@ import biz.smt_life.android.core.designsystem.util.SoundUtils
 import biz.smt_life.android.core.domain.model.IncomingWarehouse
 import biz.smt_life.android.core.domain.model.PendingCounts
 import biz.smt_life.android.core.domain.model.Warehouse
+import biz.smt_life.android.core.ui.HardwareKeyHandler
 
 @Composable
 fun MainRoute(
@@ -60,6 +63,18 @@ fun MainRoute(
         }
     }
 
+    HardwareKeyHandler { keyCode, _ ->
+        when (keyCode) {
+            AndroidKeyEvent.KEYCODE_F2,
+            AndroidKeyEvent.KEYCODE_BACK,
+            AndroidKeyEvent.KEYCODE_ESCAPE,
+            AndroidKeyEvent.KEYCODE_SOFT_RIGHT,
+            AndroidKeyEvent.KEYCODE_MENU,
+            AndroidKeyEvent.KEYCODE_BUTTON_B -> true
+            else -> false
+        }
+    }
+
     MainScreen(
         state = state,
         onNavigateToInbound = onNavigateToInbound,
@@ -76,7 +91,8 @@ fun MainRoute(
         onShowWarehouseDialog = viewModel::showWarehouseDialog,
         onDismissWarehouseDialog = viewModel::dismissWarehouseDialog,
         onSelectWarehouse = viewModel::selectWarehouse,
-        onRefreshMaster = viewModel::refreshMasterData
+        onRefreshMaster = viewModel::refreshMasterData,
+        onClearMasterUpdateMessage = viewModel::clearMasterUpdateMessage
     )
 }
 
@@ -96,6 +112,7 @@ fun MainScreen(
     onDismissWarehouseDialog: () -> Unit = {},
     onSelectWarehouse: (IncomingWarehouse) -> Unit = {},
     onRefreshMaster: () -> Unit = {},
+    onClearMasterUpdateMessage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     when (state) {
@@ -118,10 +135,12 @@ fun MainScreen(
                 showWarehouseDialog = state.showWarehouseDialog,
                 isMasterUpdating = state.isMasterUpdating,
                 masterLastUpdatedAt = state.masterLastUpdatedAt,
+                masterUpdateMessage = state.masterUpdateMessage,
                 onShowWarehouseDialog = onShowWarehouseDialog,
                 onDismissWarehouseDialog = onDismissWarehouseDialog,
                 onSelectWarehouse = onSelectWarehouse,
                 onRefreshMaster = onRefreshMaster,
+                onClearMasterUpdateMessage = onClearMasterUpdateMessage,
                 onNavigateToInbound = onNavigateToInbound,
                 onNavigateToInboundWebView = onNavigateToInboundWebView,
                 onNavigateToOutbound = onNavigateToOutbound,
@@ -169,10 +188,12 @@ private fun ReadyContent(
     showWarehouseDialog: Boolean,
     isMasterUpdating: Boolean,
     masterLastUpdatedAt: String?,
+    masterUpdateMessage: String?,
     onShowWarehouseDialog: () -> Unit,
     onDismissWarehouseDialog: () -> Unit,
     onSelectWarehouse: (IncomingWarehouse) -> Unit,
     onRefreshMaster: () -> Unit,
+    onClearMasterUpdateMessage: () -> Unit,
     onNavigateToInbound: () -> Unit,
     onNavigateToInboundWebView: (authKey: String, warehouseId: String) -> Unit,
     onNavigateToOutbound: () -> Unit,
@@ -187,6 +208,17 @@ private fun ReadyContent(
     val screenBackground = Color(0xFFF4F8FF)
     val primaryTextColor = Color(0xFF0B2F63)
     val secondaryTextColor = Color(0xFF50657D)
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(masterUpdateMessage) {
+        masterUpdateMessage?.let { message ->
+            snackbarHostState.showSnackbar(
+                message = message,
+                duration = SnackbarDuration.Short
+            )
+            onClearMasterUpdateMessage()
+        }
+    }
 
     if (showLogoutDialog) {
         AlertDialog(
@@ -278,7 +310,7 @@ private fun ReadyContent(
                         true
                     }
                     event.key == Key.F2 -> {
-                        showLogoutDialog = true
+                        SoundUtils.playBeep()
                         true
                     }
                     event.key == Key.F4 -> {
@@ -486,7 +518,7 @@ private fun ReadyContent(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = currentDate,
                         style = MaterialTheme.typography.bodyMedium,
@@ -499,11 +531,22 @@ private fun ReadyContent(
                     )
                 }
 
-                IconButton(onClick = { showLogoutDialog = true }) {
+                Spacer(modifier = Modifier.width(12.dp))
+
+                OutlinedButton(
+                    onClick = { showLogoutDialog = true },
+                    modifier = Modifier
+                        .height(52.dp)
+                        .focusProperties { canFocus = false },
+                    contentPadding = PaddingValues(horizontal = 14.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.ExitToApp,
-                        contentDescription = "ログアウト"
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp)
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("終了", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -538,6 +581,13 @@ private fun ReadyContent(
                 }
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp, vertical = 56.dp)
+        )
     }
 }
 
@@ -889,7 +939,7 @@ private fun MainScreenReadyPreview() {
                 pendingCounts = PendingCounts(5, 12, 3),
                 currentDate = "2024/10/07 Mon",
                 hostUrl = "https://handy.click",
-                appVersion = "Ver.1.4.0",
+                appVersion = "Ver.1.5.4",
                 authKey = "test_auth_key",
                 warehouseId = "001"
             ),
