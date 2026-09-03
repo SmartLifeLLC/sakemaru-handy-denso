@@ -130,7 +130,7 @@ class MainViewModel @Inject constructor(
                     inventory = 0
                 )
                 val currentDate = getCurrentDate()
-                val appVersion = "Ver.1.5.4"
+                val appVersion = "Ver.1.6.0"
 
                 _uiState.value = MainUiState.Ready(
                     pickerCode = pickerCode,
@@ -202,7 +202,7 @@ class MainViewModel @Inject constructor(
                 ),
                 currentDate = getCurrentDate(),
                 hostUrl = hostUrl,
-                appVersion = "Ver.1.5.4",
+                appVersion = "Ver.1.6.0",
                 authKey = authToken,
                 warehouseId = warehouseId.toString(),
                 warehouses = warehouses,
