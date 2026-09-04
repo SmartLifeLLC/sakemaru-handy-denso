@@ -38,6 +38,9 @@ class InventoryCountViewModel @Inject constructor(
     private val _state = MutableStateFlow(InventoryCountState())
     val state: StateFlow<InventoryCountState> = _state.asStateFlow()
 
+    /** 退避送信の冪等キー（成功するまで同じ値を再利用） */
+    private var pendingRescueUploadUuid: String? = null
+
     init {
         SoundUtils.init(context)
         restoreBestCache()
@@ -104,6 +107,7 @@ class InventoryCountViewModel @Inject constructor(
 
     fun resetLocalData() {
         preferences.edit { clear() }
+        pendingRescueUploadUuid = null
         _state.update {
             it.copy(
                 allItems = emptyList(),
@@ -661,7 +665,12 @@ class InventoryCountViewModel @Inject constructor(
         Log.d("InventoryCount", "submitRescueData: sending ${inputs.size} items for countId=${count.id} (already sent=$alreadySentCount)")
         _state.update { it.copy(message = "退避送信中... ${inputs.size}件") }
 
+        val uploadUuid = pendingRescueUploadUuid ?: UUID.randomUUID().toString().also {
+            pendingRescueUploadUuid = it
+            persistCache()
+        }
         val request = InventoryRescueRequest(
+            uploadUuid = uploadUuid,
             originalCountId = count.id,
             originalCountNo = count.countNo,
             countRound = countRound,
@@ -708,7 +717,8 @@ class InventoryCountViewModel @Inject constructor(
             return
         }
 
-        Log.i("InventoryCount", "submitRescueData: success. rescueId=${response.result?.data?.rescueId} received=${response.result?.data?.receivedCount}")
+        Log.i("InventoryCount", "submitRescueData: success. rescueId=${response.result?.data?.rescueId} received=${response.result?.data?.receivedCount} duplicated=${response.result?.data?.duplicated}")
+        pendingRescueUploadUuid = null
         val sentItemIds = inputs.map { it.itemId }.toSet()
         _state.update { state ->
             val sent = inputs.map { it.copy(sent = true, updatedAt = System.currentTimeMillis()) }
@@ -738,6 +748,7 @@ class InventoryCountViewModel @Inject constructor(
     private fun restoreCache(countId: Int) {
         val raw = preferences.getString(cacheKey(countId), null) ?: return
         val cache = runCatching { json.decodeFromString<InventoryLocalCache>(raw) }.getOrNull() ?: return
+        pendingRescueUploadUuid = cache.pendingRescueUploadUuid
         _state.update {
             it.copy(
                 allItems = cache.items,
@@ -757,6 +768,7 @@ class InventoryCountViewModel @Inject constructor(
             if (raw != null) {
                 val cache = runCatching { json.decodeFromString<InventoryLocalCache>(raw) }.getOrNull()
                 if (cache != null) {
+                    pendingRescueUploadUuid = cache.pendingRescueUploadUuid
                     _state.update {
                         it.copy(
                             loading = false,
@@ -786,6 +798,7 @@ class InventoryCountViewModel @Inject constructor(
 
         val raw = preferences.getString(bestKey, null) ?: return
         val cache = runCatching { json.decodeFromString<InventoryLocalCache>(raw) }.getOrNull() ?: return
+        pendingRescueUploadUuid = cache.pendingRescueUploadUuid
 
         val offlineCount = InventoryCountResponse(
             id = cache.countId,
@@ -820,7 +833,8 @@ class InventoryCountViewModel @Inject constructor(
             janDictionary = state.janDictionary,
             dirtyInputs = state.dirtyInputs.values.toList(),
             sentHistory = state.sentHistory,
-            syncedAt = state.syncedAt
+            syncedAt = state.syncedAt,
+            pendingRescueUploadUuid = pendingRescueUploadUuid
         )
         val encoded = json.encodeToString(cache)
         preferences.edit(commit = false) {

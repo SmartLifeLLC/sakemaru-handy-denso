@@ -77,5 +77,7 @@ data class InventoryLocalCache(
     val janDictionary: Map<String, List<JanCodeEntry>> = emptyMap(),
     val dirtyInputs: List<LocalInventoryInput> = emptyList(),
     val sentHistory: List<LocalInventoryInput> = emptyList(),
-    val syncedAt: Long? = null
+    val syncedAt: Long? = null,
+    /** 退避送信の upload_uuid。成功するまで保持し、再送時に同じ値を使う（サーバー側で重複排除） */
+    val pendingRescueUploadUuid: String? = null
 )
