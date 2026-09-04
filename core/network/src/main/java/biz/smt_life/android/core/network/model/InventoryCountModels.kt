@@ -155,6 +155,36 @@ data class InventoryBulkCountItemRequest(
     @SerialName("request_uuid") val requestUuid: String
 )
 
+@Serializable
+data class InventoryRescueRequest(
+    @SerialName("original_count_id") val originalCountId: Int,
+    @SerialName("original_count_no") val originalCountNo: String,
+    @SerialName("count_round") val countRound: Int,
+    @SerialName("device_id") val deviceId: String? = "DENSO",
+    val items: List<InventoryRescueItemRequest>
+)
+
+@Serializable
+data class InventoryRescueItemRequest(
+    @SerialName("item_id") val itemId: Int,
+    @SerialName("item_code") val itemCode: String,
+    @SerialName("item_name") val itemName: String,
+    @SerialName("location_no") val locationNo: String? = null,
+    @SerialName("case_quantity") val caseQuantity: Int,
+    @SerialName("piece_quantity") val pieceQuantity: Int,
+    @SerialName("total_pieces") val totalPieces: Int,
+    @SerialName("search_code") val searchCode: String? = null,
+    @SerialName("package_quantity") val packageQuantity: Int? = null,
+    @SerialName("request_uuid") val requestUuid: String,
+    @SerialName("input_at") val inputAt: Long
+)
+
+@Serializable
+data class InventoryRescueData(
+    @SerialName("rescue_id") val rescueId: Int,
+    @SerialName("received_count") val receivedCount: Int
+)
+
 private fun decodeInventoryQuantityType(value: String?): String =
     when (value) {
         "0" -> "PIECE"
