@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import biz.smt_life.android.core.designsystem.theme.HandyTheme
 import biz.smt_life.android.core.domain.repository.AuthRepository
+import biz.smt_life.android.core.network.NetworkException
 import biz.smt_life.android.core.ui.HardwareKeyDispatcher
 import biz.smt_life.android.core.ui.TokenManager
 import biz.smt_life.android.sakemaru_handy_denso.navigation.HandyNavHost
@@ -110,14 +111,19 @@ class MainActivity : ComponentActivity() {
         // Keep navigation bar hidden
         hideNavigationBar()
 
-        // Validate session on resume if already validated once
+        // Validate session on resume if already validated once.
+        // オフライン運用（WiFi切断中の棚卸し/倉庫移動）を壊さないよう、
+        // トークン破棄は「サーバーが401を返した場合」だけに限定する。
+        // 通信エラー・タイムアウト・サーバーエラーではローカルのトークンを保持する。
         if (isSessionValidated && tokenManager.isLoggedIn()) {
             lifecycleScope.launch {
                 authRepository.validateSession()
-                    .onFailure {
-                        // Session expired, clear token and restart activity
-                        tokenManager.clearAuth()
-                        recreate()
+                    .onFailure { error ->
+                        if (error is NetworkException.Unauthorized) {
+                            // Session expired, clear token and restart activity
+                            tokenManager.clearAuth()
+                            recreate()
+                        }
                     }
             }
         }
@@ -186,9 +192,14 @@ class MainActivity : ComponentActivity() {
                     // Session valid, go to Main
                     return@validateSession Routes.Main.route
                 }
-                .onFailure {
-                    // Session invalid, clear token
-                    tokenManager.clearAuth()
+                .onFailure { error ->
+                    if (error is NetworkException.Unauthorized) {
+                        // Session invalid (401), clear token
+                        tokenManager.clearAuth()
+                    } else {
+                        // 通信不可・サーバーエラー時はローカルのトークンで続行（オフライン運用）
+                        return@validateSession Routes.Main.route
+                    }
                 }
             // If validation failed, go to Login
             Routes.Login.route
