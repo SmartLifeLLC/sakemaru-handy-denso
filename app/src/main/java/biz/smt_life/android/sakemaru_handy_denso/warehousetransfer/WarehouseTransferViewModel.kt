@@ -8,6 +8,8 @@ import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import biz.smt_life.android.core.designsystem.util.SoundUtils
+import biz.smt_life.android.core.network.ErrorMapper
+import biz.smt_life.android.core.network.NetworkException
 import biz.smt_life.android.core.network.api.WarehouseTransferApi
 import biz.smt_life.android.core.network.model.JanCodeEntry
 import biz.smt_life.android.core.network.model.WarehouseTransferStockItem
@@ -60,8 +62,22 @@ class WarehouseTransferViewModel @Inject constructor(
     // Sync
     // ------------------------------------------------------------
 
+    /**
+     * 自店倉庫IDを再取得する（再ログイン等でTokenManagerが更新された場合に追従）
+     */
+    private fun resolveFromWarehouseId(): Int {
+        val current = _state.value.fromWarehouseId
+        val latest = tokenManager.getDefaultWarehouseId()
+        if (latest > 0 && latest != current) {
+            _state.update { it.copy(fromWarehouseId = latest) }
+            if (current <= 0) restoreCache(latest)
+            return latest
+        }
+        return if (current > 0) current else latest
+    }
+
     fun syncAllItems() {
-        val fromWarehouseId = _state.value.fromWarehouseId
+        val fromWarehouseId = resolveFromWarehouseId()
         if (fromWarehouseId <= 0) {
             _state.update { it.copy(error = "自店倉庫が設定されていません") }
             return
@@ -442,8 +458,13 @@ class WarehouseTransferViewModel @Inject constructor(
      * 通信できない場合はダイアログを開かずエラー表示し、未送信履歴はそのまま保持する。
      */
     fun startSubmit() {
+        resolveFromWarehouseId()
         val current = _state.value
         if (current.submitting || current.destinationLoading) return
+        if (current.fromWarehouseId <= 0) {
+            _state.update { it.copy(error = "自店倉庫が設定されていません。再ログインしてください") }
+            return
+        }
         if (current.dirtyInputs.isEmpty()) {
             _state.update { it.copy(error = "未送信の入力はありません") }
             return
@@ -464,7 +485,7 @@ class WarehouseTransferViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         destinationLoading = false,
-                        error = "サーバーと通信できませんでした。未送信履歴は保持されています",
+                        error = failureMessageFor(result.exceptionOrNull(), "サーバーと通信できませんでした"),
                         message = null
                     )
                 }
@@ -584,7 +605,7 @@ class WarehouseTransferViewModel @Inject constructor(
                 val response = result.getOrNull()
                 if (response == null) {
                     Log.e(TAG, "submit failed", result.exceptionOrNull())
-                    failureMessage = "送信できませんでした。未送信履歴に残しました"
+                    failureMessage = failureMessageFor(result.exceptionOrNull(), "送信できませんでした")
                     break
                 }
                 if (!response.isSuccess) {
@@ -692,6 +713,22 @@ class WarehouseTransferViewModel @Inject constructor(
     // ------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------
+
+    /**
+     * 例外種別に応じたユーザー向けメッセージ。未送信履歴が保持されることを必ず伝える。
+     */
+    private fun failureMessageFor(error: Throwable?, fallback: String): String {
+        val reason = when (val mapped = error?.let { ErrorMapper.mapException(it) }) {
+            is NetworkException.Unauthorized -> "認証が切れています。ログアウトして再ログインしてください"
+            is NetworkException.Forbidden -> "権限がありません"
+            is NetworkException.ServerError -> "サーバーエラーが発生しました"
+            is NetworkException.NetworkError -> "通信できません。WiFi接続を確認してください"
+            is NetworkException.ValidationError -> mapped.msg
+            null -> fallback
+            else -> fallback
+        }
+        return "$reason（未送信履歴は保持されています）"
+    }
 
     private fun isNetworkAvailable(): Boolean {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
