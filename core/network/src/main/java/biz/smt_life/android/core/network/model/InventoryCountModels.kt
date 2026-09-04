@@ -157,6 +157,8 @@ data class InventoryBulkCountItemRequest(
 
 @Serializable
 data class InventoryRescueRequest(
+    /** 送信単位の冪等キー。成功するまで同じ値で再送する */
+    @SerialName("upload_uuid") val uploadUuid: String? = null,
     @SerialName("original_count_id") val originalCountId: Int,
     @SerialName("original_count_no") val originalCountNo: String,
     @SerialName("count_round") val countRound: Int,
@@ -182,7 +184,8 @@ data class InventoryRescueItemRequest(
 @Serializable
 data class InventoryRescueData(
     @SerialName("rescue_id") val rescueId: Int,
-    @SerialName("received_count") val receivedCount: Int
+    @SerialName("received_count") val receivedCount: Int,
+    val duplicated: Boolean = false
 )
 
 private fun decodeInventoryQuantityType(value: String?): String =
