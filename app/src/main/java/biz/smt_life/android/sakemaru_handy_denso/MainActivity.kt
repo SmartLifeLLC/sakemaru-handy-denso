@@ -19,17 +19,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import biz.smt_life.android.core.designsystem.theme.HandyTheme
-import biz.smt_life.android.core.domain.repository.AuthRepository
-import biz.smt_life.android.core.network.NetworkException
 import biz.smt_life.android.core.ui.HardwareKeyDispatcher
 import biz.smt_life.android.core.ui.TokenManager
 import biz.smt_life.android.sakemaru_handy_denso.navigation.HandyNavHost
 import biz.smt_life.android.sakemaru_handy_denso.navigation.Routes
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -41,11 +37,6 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var tokenManager: TokenManager
-
-    @Inject
-    lateinit var authRepository: AuthRepository
-
-    private var isSessionValidated = false
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (HardwareKeyDispatcher.dispatch(event)) {
@@ -77,7 +68,6 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     startDestination = validateSession()
                     isValidating = false
-                    isSessionValidated = true
                 }
 
                 if (isValidating) {
@@ -111,22 +101,11 @@ class MainActivity : ComponentActivity() {
         // Keep navigation bar hidden
         hideNavigationBar()
 
-        // Validate session on resume if already validated once.
-        // オフライン運用（WiFi切断中の棚卸し/倉庫移動）を壊さないよう、
-        // トークン破棄は「サーバーが401を返した場合」だけに限定する。
-        // 通信エラー・タイムアウト・サーバーエラーではローカルのトークンを保持する。
-        if (isSessionValidated && tokenManager.isLoggedIn()) {
-            lifecycleScope.launch {
-                authRepository.validateSession()
-                    .onFailure { error ->
-                        if (error is NetworkException.Unauthorized) {
-                            // Session expired, clear token and restart activity
-                            tokenManager.clearAuth()
-                            recreate()
-                        }
-                    }
-            }
-        }
+        // セッションはアプリ側で自動破棄しない。
+        // ログアウトは利用者がメニューから明示的に行った場合のみ（MainViewModel.logout）。
+        // ※ 以前はここで /api/me を検証し失敗時に clearAuth() していたが、
+        //    通信断や一時的なサーバーエラーで誤ログアウトし、棚卸し・倉庫移動の
+        //    未送信データが送れなくなる原因になっていたため撤去した。
     }
 
     /**
@@ -181,30 +160,16 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Validates session on app start.
-     * Returns the appropriate start destination.
+     * Resolves the start destination on app start.
+     *
+     * 保存済みトークンがあればサーバー検証なしでメイン画面へ進む（オフライン運用）。
+     * トークンが無効な場合は各APIが401を返し、利用者が手動でログアウト→再ログインする。
+     * アプリ側でトークンを自動破棄することはしない。
      */
-    private suspend fun validateSession(): String {
+    private fun validateSession(): String {
         return if (tokenManager.isLoggedIn()) {
-            // Token exists, validate with server
-            authRepository.validateSession()
-                .onSuccess {
-                    // Session valid, go to Main
-                    return@validateSession Routes.Main.route
-                }
-                .onFailure { error ->
-                    if (error is NetworkException.Unauthorized) {
-                        // Session invalid (401), clear token
-                        tokenManager.clearAuth()
-                    } else {
-                        // 通信不可・サーバーエラー時はローカルのトークンで続行（オフライン運用）
-                        return@validateSession Routes.Main.route
-                    }
-                }
-            // If validation failed, go to Login
-            Routes.Login.route
+            Routes.Main.route
         } else {
-            // No token, go to Login
             Routes.Login.route
         }
     }
