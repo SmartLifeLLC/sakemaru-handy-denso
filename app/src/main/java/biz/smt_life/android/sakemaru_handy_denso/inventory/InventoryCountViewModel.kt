@@ -11,6 +11,8 @@ import biz.smt_life.android.core.network.model.InventoryBulkCountItemRequest
 import biz.smt_life.android.core.network.model.InventoryBulkCountRequest
 import biz.smt_life.android.core.network.model.InventoryCountItemResponse
 import biz.smt_life.android.core.network.model.InventoryCountResponse
+import biz.smt_life.android.core.network.model.InventoryRescueItemRequest
+import biz.smt_life.android.core.network.model.InventoryRescueRequest
 import biz.smt_life.android.core.network.model.JanCodeEntry
 import biz.smt_life.android.core.ui.TokenManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -135,8 +137,14 @@ class InventoryCountViewModel @Inject constructor(
             do {
                 _state.update { it.copy(message = "取得中... ${all.size}件 (${page}/${lastPage}ページ)") }
                 val response = runCatching { api.getItems(count.id, page, 500) }
-                    .getOrElse {
-                        _state.update { state -> state.copy(syncing = false, error = it.message ?: "棚卸しデータ取得に失敗しました", message = null) }
+                    .getOrElse { error ->
+                        val msg = when {
+                            isNetworkException(error) -> "ネットワークに接続されていません。接続を確認してください"
+                            (error.message ?: "").let { it.contains("カウントできる状態") || it.contains("INVALID_STATUS") } ->
+                                "この棚卸しは終了しています。F3で棚卸し指示を再確認してください"
+                            else -> error.message?.ifBlank { null } ?: "棚卸しデータ取得に失敗しました"
+                        }
+                        _state.update { state -> state.copy(syncing = false, error = msg, message = null) }
                         return@launch
                     }
                 val data = response.result?.data
@@ -524,82 +532,207 @@ class InventoryCountViewModel @Inject constructor(
 
         viewModelScope.launch {
             _state.update { it.copy(submitting = true, error = null, message = "${roundLabel(current.countRound)}送信中...") }
-            val chunks = inputs.chunked(BULK_SUBMIT_CHUNK_SIZE)
-            val updatedById = mutableMapOf<Int, InventoryCountItemResponse>()
-            val missingItemIds = mutableSetOf<Int>()
-            val sentItemIds = mutableSetOf<Int>()
-            var failureMessage: String? = null
+            try {
+                submitBulkOrRescue(count, current.countRound, inputs)
+            } finally {
+                _state.update { it.copy(submitting = false) }
+            }
+        }
+    }
 
-            for ((index, chunk) in chunks.withIndex()) {
-                _state.update {
-                    it.copy(message = "${roundLabel(current.countRound)}送信中... ${index + 1}/${chunks.size}")
-                }
+    private suspend fun submitBulkOrRescue(
+        count: InventoryCountResponse,
+        countRound: Int,
+        inputs: List<LocalInventoryInput>
+    ) {
+        val chunks = inputs.chunked(BULK_SUBMIT_CHUNK_SIZE)
+        val updatedById = mutableMapOf<Int, InventoryCountItemResponse>()
+        val missingItemIds = mutableSetOf<Int>()
+        val sentItemIds = mutableSetOf<Int>()
+        var needsRescue = false
+        var isNetworkError = false
+        var failureMessage: String? = null
 
-                val request = InventoryBulkCountRequest(
-                    countRound = current.countRound,
-                    items = chunk.map {
-                        InventoryBulkCountItemRequest(
-                            itemId = it.itemId,
-                            caseQuantity = it.caseQuantity,
-                            pieceQuantity = it.pieceQuantity,
-                            quantity = it.totalPieces,
-                            searchCode = it.searchCode,
-                            requestUuid = it.requestUuid
-                        )
-                    }
-                )
-
-                Log.d("InventoryCount", "finishRound: sending chunk ${index + 1}/${chunks.size} with ${chunk.size} items, countId=${count.id}, countRound=${current.countRound}")
-                val result = runCatching { api.submitBulkCounts(count.id, request) }
-                if (result.isFailure) {
-                    val ex = result.exceptionOrNull()
-                    Log.e("InventoryCount", "finishRound: API call failed: ${ex?.javaClass?.simpleName}: ${ex?.message}", ex)
-                    failureMessage = ex?.message ?: "送信に失敗しました。ローカル入力は保持されています"
-                    break
-                }
-
-                val response = result.getOrThrow()
-                Log.d("InventoryCount", "finishRound: API response isSuccess=${response.isSuccess} code=${response.code} errorMessage=${response.result?.errorMessage}")
-
-                if (!response.isSuccess) {
-                    Log.w("InventoryCount", "finishRound: server returned isSuccess=false: ${response.result?.errorMessage} errors=${response.result?.errors} debug=${response.result?.debugMessage}")
-                    failureMessage = response.result?.errorMessage ?: "送信に失敗しました。ローカル入力は保持されています"
-                    break
-                }
-
-                val data = response.result?.data
-                val updated = data?.items.orEmpty()
-                updatedById += updated.associateBy { it.id }
-                missingItemIds += data?.missingItemIds.orEmpty()
-                sentItemIds += updated.map { it.id }
-                Log.d("InventoryCount", "finishRound: chunk result updated=${updated.size} missing=${data?.missingItemIds.orEmpty().size} sentSoFar=${sentItemIds.size}")
+        for ((index, chunk) in chunks.withIndex()) {
+            _state.update {
+                it.copy(message = "${roundLabel(countRound)}送信中... ${index + 1}/${chunks.size}")
             }
 
+            val request = InventoryBulkCountRequest(
+                countRound = countRound,
+                items = chunk.map {
+                    InventoryBulkCountItemRequest(
+                        itemId = it.itemId,
+                        caseQuantity = it.caseQuantity,
+                        pieceQuantity = it.pieceQuantity,
+                        quantity = it.totalPieces,
+                        searchCode = it.searchCode,
+                        requestUuid = it.requestUuid
+                    )
+                }
+            )
+
+            Log.d("InventoryCount", "finishRound: sending chunk ${index + 1}/${chunks.size} with ${chunk.size} items, countId=${count.id}, countRound=$countRound")
+            val result = runCatching { api.submitBulkCounts(count.id, request) }
+            if (result.isFailure) {
+                val ex = result.exceptionOrNull()
+                Log.e("InventoryCount", "finishRound: API call failed: ${ex?.javaClass?.simpleName}: ${ex?.message}", ex)
+                if (isNetworkException(ex)) {
+                    isNetworkError = true
+                } else {
+                    needsRescue = true
+                }
+                break
+            }
+
+            val response = result.getOrThrow()
+            Log.d("InventoryCount", "finishRound: API response isSuccess=${response.isSuccess} code=${response.code} errorMessage=${response.result?.errorMessage}")
+
+            if (!response.isSuccess) {
+                Log.w("InventoryCount", "finishRound: server returned isSuccess=false: ${response.result?.errorMessage} errors=${response.result?.errors} debug=${response.result?.debugMessage}")
+                needsRescue = true
+                break
+            }
+
+            val data = response.result?.data
+            val updated = data?.items.orEmpty()
+            updatedById += updated.associateBy { it.id }
+            missingItemIds += data?.missingItemIds.orEmpty()
+            sentItemIds += updated.map { it.id }
+            Log.d("InventoryCount", "finishRound: chunk result updated=${updated.size} missing=${data?.missingItemIds.orEmpty().size} sentSoFar=${sentItemIds.size}")
+        }
+
+        // 送信済み分を先に反映（部分成功の場合もデータを失わない）
+        if (sentItemIds.isNotEmpty()) {
             val sentInputs = inputs.filter { it.itemId in sentItemIds }
-            val partial = sentInputs.size != inputs.size || missingItemIds.isNotEmpty() || failureMessage != null
-            Log.d("InventoryCount", "finishRound: done. sent=${sentInputs.size}/${inputs.size} missing=${missingItemIds.size} partial=$partial failureMessage=$failureMessage")
             _state.update { state ->
                 val sent = sentInputs.map { it.copy(sent = true, updatedAt = System.currentTimeMillis()) }
                 state.copy(
-                    submitting = false,
                     allItems = state.allItems.map { updatedById[it.id] ?: it },
                     items = state.items.map { updatedById[it.id] ?: it },
                     selectedItem = state.selectedItem?.let { updatedById[it.id] ?: it },
                     dirtyInputs = state.dirtyInputs - sentItemIds,
-                    sentHistory = (sent + state.sentHistory).take(100),
-                    caseQuantity = "",
-                    pieceQuantity = "",
-                    accumulatedBase = null,
-                    message = "${roundLabel(state.countRound)}を${sentInputs.size}件送信しました",
-                    error = if (partial) {
-                        failureMessage ?: "一部の明細が更新されませんでした。未更新分はローカルに保持されています"
-                    } else {
-                        null
-                    }
+                    sentHistory = (sent + state.sentHistory).take(100)
                 )
             }
             persistCache()
         }
+
+        val unsentInputs = inputs.filter { it.itemId !in sentItemIds }
+        val sentCount = sentItemIds.size
+
+        when {
+            unsentInputs.isEmpty() && missingItemIds.isEmpty() -> {
+                Log.d("InventoryCount", "finishRound: all ${inputs.size} items sent successfully")
+                _state.update { it.copy(
+                    caseQuantity = "", pieceQuantity = "", accumulatedBase = null,
+                    message = "${roundLabel(countRound)}を${sentCount}件送信しました",
+                    error = null
+                ) }
+            }
+            unsentInputs.isEmpty() && missingItemIds.isNotEmpty() -> {
+                Log.w("InventoryCount", "finishRound: sent=$sentCount but missing=${missingItemIds.size}")
+                _state.update { it.copy(
+                    caseQuantity = "", pieceQuantity = "", accumulatedBase = null,
+                    message = "${sentCount}件送信しました",
+                    error = "一部の明細がサーバーで見つかりませんでした"
+                ) }
+            }
+            isNetworkError -> {
+                Log.w("InventoryCount", "finishRound: network error, keeping ${unsentInputs.size} items locally")
+                _state.update { it.copy(
+                    message = if (sentCount > 0) "${sentCount}件送信済み" else null,
+                    error = "ネットワークに接続されていません。接続を確認して再度送信してください（未送信${unsentInputs.size}件はローカルに保持）"
+                ) }
+            }
+            needsRescue -> {
+                Log.i("InventoryCount", "finishRound: server error, attempting rescue for ${unsentInputs.size} items")
+                submitRescueData(count, countRound, unsentInputs, sentCount)
+            }
+        }
+    }
+
+    private suspend fun submitRescueData(
+        count: InventoryCountResponse,
+        countRound: Int,
+        inputs: List<LocalInventoryInput>,
+        alreadySentCount: Int = 0
+    ) {
+        Log.d("InventoryCount", "submitRescueData: sending ${inputs.size} items for countId=${count.id} (already sent=$alreadySentCount)")
+        _state.update { it.copy(message = "退避送信中... ${inputs.size}件") }
+
+        val request = InventoryRescueRequest(
+            originalCountId = count.id,
+            originalCountNo = count.countNo,
+            countRound = countRound,
+            items = inputs.map {
+                InventoryRescueItemRequest(
+                    itemId = it.itemId,
+                    itemCode = it.itemCode,
+                    itemName = it.itemName,
+                    locationNo = it.locationNo,
+                    caseQuantity = it.caseQuantity,
+                    pieceQuantity = it.pieceQuantity,
+                    totalPieces = it.totalPieces,
+                    searchCode = it.searchCode,
+                    packageQuantity = it.packageQuantity,
+                    requestUuid = it.requestUuid,
+                    inputAt = it.updatedAt
+                )
+            }
+        )
+
+        val result = runCatching { api.submitRescueData(request) }
+        if (result.isFailure) {
+            val ex = result.exceptionOrNull()
+            Log.e("InventoryCount", "submitRescueData: failed: ${ex?.message}", ex)
+            val errorMsg = if (isNetworkException(ex)) {
+                "ネットワークに接続されていません。データはローカルに保持されています（未送信${inputs.size}件）"
+            } else {
+                "退避送信にも失敗しました。データはローカルに保持されています（未送信${inputs.size}件）"
+            }
+            _state.update { it.copy(
+                error = errorMsg,
+                message = if (alreadySentCount > 0) "${alreadySentCount}件は送信済み" else null
+            ) }
+            return
+        }
+
+        val response = result.getOrThrow()
+        if (!response.isSuccess) {
+            Log.w("InventoryCount", "submitRescueData: server returned error: ${response.result?.errorMessage}")
+            _state.update { it.copy(
+                error = "退避送信エラー。データはローカルに保持されています（未送信${inputs.size}件）",
+                message = if (alreadySentCount > 0) "${alreadySentCount}件は送信済み" else null
+            ) }
+            return
+        }
+
+        Log.i("InventoryCount", "submitRescueData: success. rescueId=${response.result?.data?.rescueId} received=${response.result?.data?.receivedCount}")
+        val sentItemIds = inputs.map { it.itemId }.toSet()
+        _state.update { state ->
+            val sent = inputs.map { it.copy(sent = true, updatedAt = System.currentTimeMillis()) }
+            state.copy(
+                dirtyInputs = state.dirtyInputs - sentItemIds,
+                sentHistory = (sent + state.sentHistory).take(100),
+                caseQuantity = "",
+                pieceQuantity = "",
+                accumulatedBase = null,
+                message = "${inputs.size}件を退避送信しました。サーバーで後処理されます" +
+                    if (alreadySentCount > 0) "（通常送信${alreadySentCount}件）" else "",
+                error = null
+            )
+        }
+        persistCache()
+    }
+
+    private fun isNetworkException(ex: Throwable?): Boolean {
+        if (ex is java.io.IOException) return true
+        if (ex?.cause is java.io.IOException) return true
+        val msg = ex?.message?.lowercase() ?: ""
+        return msg.contains("ネットワーク") || msg.contains("network") ||
+            msg.contains("unable to resolve") || msg.contains("timeout") ||
+            msg.contains("connection") || msg.contains("unreachable")
     }
 
     private fun restoreCache(countId: Int) {

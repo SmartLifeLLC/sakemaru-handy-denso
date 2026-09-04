@@ -8,6 +8,8 @@ import biz.smt_life.android.core.network.model.InventoryCountSubmitData
 import biz.smt_life.android.core.network.model.InventoryItemsData
 import biz.smt_life.android.core.network.model.InventoryBulkCountRequest
 import biz.smt_life.android.core.network.model.InventoryBulkCountData
+import biz.smt_life.android.core.network.model.InventoryRescueRequest
+import biz.smt_life.android.core.network.model.InventoryRescueData
 import biz.smt_life.android.core.network.model.JanCodeDictionaryData
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -56,4 +58,9 @@ interface InventoryCountApi {
         @Path("itemId") itemId: Int,
         @Body request: InventoryCountRequest
     ): ApiEnvelope<InventoryCountSubmitData>
+
+    @POST("/api/wms/inventory-counts/rescue")
+    suspend fun submitRescueData(
+        @Body request: InventoryRescueRequest
+    ): ApiEnvelope<InventoryRescueData>
 }
